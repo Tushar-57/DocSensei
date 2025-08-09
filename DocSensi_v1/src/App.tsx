@@ -58,8 +58,10 @@ function App() {
   };
 
   return (
-    <div className="font-geist antialiased">
-      {renderCurrentMode()}
+    <div className="font-geist antialiased min-h-screen bg-white flex flex-col">
+      <div className="flex-grow flex flex-col">
+        {renderCurrentMode()}
+      </div>
     </div>
   );
 }

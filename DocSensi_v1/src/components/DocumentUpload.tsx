@@ -1,4 +1,61 @@
-import React, { useRef, useState } from 'react';
+
+import React, { useRef, useState, useEffect } from 'react';
+
+// Responsive InfoFooter component
+const InfoFooter: React.FC = () => {
+  const [open, setOpen] = useState(true);
+
+  useEffect(() => {
+    if (window.innerWidth < 640) setOpen(false);
+  }, []);
+
+  return (
+    <div
+      className={`bg-white/70 dark:bg-dark-800/80 backdrop-blur-md border border-white/30 dark:border-dark-700/30 rounded-t-2xl shadow-xl px-4 sm:px-6 py-3 sm:py-5 max-w-2xl w-full m-2 sm:m-4 pointer-events-auto transition-all duration-300 ${open ? 'translate-y-0 opacity-100' : 'translate-y-20 opacity-60'} flex flex-col`}
+      style={{ minWidth: 0 }}
+    >
+      <div className="flex items-center justify-between mb-2">
+        <h2 className="text-lg sm:text-xl font-semibold text-left text-gray-900 dark:text-white tracking-tight">How Doc Sensei Works</h2>
+        <button
+          className="ml-2 p-1 rounded hover:bg-gray-200 dark:hover:bg-dark-700 text-gray-600 dark:text-gray-300 focus:outline-none focus:ring"
+          aria-label={open ? 'Hide info' : 'Show info'}
+          onClick={() => setOpen((v) => !v)}
+        >
+          {open ? (
+            <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" /></svg>
+          ) : (
+            <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 6v12m6-6H6" /></svg>
+          )}
+        </button>
+      </div>
+      {open && (
+        <div className="flex flex-col gap-2">
+          <div className="flex items-center gap-2">
+            <div className="flex flex-col items-center">
+              <div className="w-7 h-7 flex items-center justify-center rounded-full bg-purple-100 text-purple-600 text-base font-bold border-2 border-purple-200">1</div>
+              <div className="w-1 h-6 bg-purple-100" />
+            </div>
+            <p className="text-gray-800 dark:text-gray-100 text-base">Upload your PDF or Word document securely.</p>
+          </div>
+          <div className="flex items-center gap-2">
+            <div className="flex flex-col items-center">
+              <div className="w-7 h-7 flex items-center justify-center rounded-full bg-blue-100 text-blue-600 text-base font-bold border-2 border-blue-200">2</div>
+              <div className="w-1 h-6 bg-blue-100" />
+            </div>
+            <p className="text-gray-800 dark:text-gray-100 text-base">Choose a mode: <span className="font-semibold text-purple-500">Learning</span> for guided Q&amp;A with AI Tutor, or <span className="font-semibold text-blue-500">Free Reading</span> with AI.</p>
+          </div>
+          <div className="flex items-center gap-2">
+            <div className="flex flex-col items-center">
+              <div className="w-7 h-7 flex items-center justify-center rounded-full bg-green-100 text-green-600 text-base font-bold border-2 border-green-200">3</div>
+            </div>
+            <p className="text-gray-800 dark:text-gray-100 text-base"><span className="font-semibold text-red-500">Interact</span>, <span className="font-semibold text-blue-500">Ask Questions</span>, and get <u>instant insights from your document !</u></p>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+};
+
 import { Upload, FileText, File, Sparkles } from 'lucide-react';
 import { Document } from '../types';
 import { ThemeToggle } from './ThemeToggle';
@@ -89,7 +146,7 @@ export const DocumentUpload: React.FC<DocumentUploadProps> = ({ onDocumentUpload
       <ThemeToggle />
 
       <div className="relative z-10 flex items-center justify-center min-h-screen p-4">
-        <div className="max-w-lg w-full">
+        <div className="max-w-lg w-full mb-36">
           {/* Header */}
           <div className="text-center mb-12 animate-fade-in">
             <div className="flex items-center justify-center mb-6">
@@ -98,11 +155,18 @@ export const DocumentUpload: React.FC<DocumentUploadProps> = ({ onDocumentUpload
                 <div className="absolute inset-0 w-12 h-12 bg-yellow-400/20 rounded-full blur-xl"></div>
               </div>
             </div>
-            <h1 className="text-5xl font-bold text-white dark:text-white mb-4 font-geist tracking-tight">
-              EduReader
-            </h1>
+            <div className="flex items-center justify-center gap-6 mb-2">
+              <img src="/src/assets/images/logo.png" alt="Doc Sensei Logo" className="w-20 h-20 rounded-full shadow-lg border border-white/20 bg-white/80 dark:bg-dark-800/80 object-contain" />
+              <h1 className="text-5xl font-bold text-white dark:text-white font-geist tracking-tight drop-shadow-lg">Doc Sensei</h1>
+            </div>
+          {/* Info Steps Section in Footer */}
+          <footer className="fixed bottom-0 left-0 w-full flex justify-center z-50 pointer-events-none">
+            {/* Responsive/collapsible info footer */}
+            <InfoFooter />
+          </footer>
+
             <p className="text-white/80 dark:text-white/70 text-xl font-light">
-              Transform documents into interactive learning experiences
+              Your AI powered mentor for document exploration
             </p>
           </div>
 

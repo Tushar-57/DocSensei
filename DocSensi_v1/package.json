@@ -1,5 +1,6 @@
 {
-  "name": "vite-react-typescript-starter",
+  "name": "doc-sensei",
+  "description": "Doc Sensei: Your Document Mentor (Sensei)",
   "private": true,
   "version": "0.0.0",
   "type": "module",
