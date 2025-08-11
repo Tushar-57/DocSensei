@@ -1,5 +1,6 @@
 
 import React, { useRef, useState, useEffect } from 'react';
+import logo from '../assets/images/logo.png'
 
 // Responsive InfoFooter component
 const InfoFooter: React.FC = () => {
@@ -156,7 +157,7 @@ export const DocumentUpload: React.FC<DocumentUploadProps> = ({ onDocumentUpload
               </div>
             </div>
             <div className="flex items-center justify-center gap-6 mb-2">
-              <img src="/src/assets/images/logo.png" alt="Doc Sensei Logo" className="w-20 h-20 rounded-full shadow-lg border border-white/20 bg-white/80 dark:bg-dark-800/80 object-contain" />
+              <img src={logo} alt="Doc Sensei Logo" className="w-20 h-20 rounded-full shadow-lg border border-white/20 bg-white/80 dark:bg-dark-800/80 object-contain" />
               <h1 className="text-5xl font-bold text-white dark:text-white font-geist tracking-tight drop-shadow-lg">Doc Sensei</h1>
             </div>
           {/* Info Steps Section in Footer */}
