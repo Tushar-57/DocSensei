@@ -7,3 +7,4 @@ python-dotenv
 langchain-openai
 langchain-core
 PyPDF2
+gunicorn==20.1.0
