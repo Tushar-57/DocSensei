@@ -5,10 +5,26 @@ Add your LangChain imports and logic here.
 """
 from logger import get_logger
 import json
+
+import os
+from dotenv import load_dotenv
 from langchain_openai import ChatOpenAI
 from langchain_core.prompts import ChatPromptTemplate
 
+
+
+load_dotenv()
 ai_logger = get_logger('AI')
+
+# LangSmith tracing test (run once at import if tracing is enabled)
+if os.environ.get("LANGSMITH_TRACING", "false").lower() == "true":
+    try:
+        ai_logger.info("LangSmith tracing enabled. Sending test trace to project: %s", os.environ.get("LANGSMITH_PROJECT"))
+        test_llm = ChatOpenAI()
+        test_llm.invoke("Hello, world!")
+        ai_logger.info("LangSmith test trace sent successfully.")
+    except Exception as e:
+        ai_logger.error("LangSmith test trace failed: %s", e)
 
 def extract_text_from_pdf(file_path: str) -> str:
     """
@@ -44,9 +60,9 @@ def mcq_quiz_generator(page_content: str):
     Use LLM to generate 3 MCQs with explanations for the given page content. Returns a list of question dicts.
     """
     ai_logger.info('mcq_quiz_generator received content: %s', page_content[:300])
-    prompt_template = ChatPromptTemplate.from_messages([
-        ("system",
-            """
+
+    # Create the prompt template
+    system_message_generate_quiz = """
             You are an expert educational content creator. Create a quiz by reading the provided document page content. Analyze the information step-by-step to produce 3 multiple-choice questions (MCQs) that assess understanding of key points from the content. For each MCQ, provide:
 
             - The question text
@@ -97,13 +113,13 @@ def mcq_quiz_generator(page_content: str):
             ---
 
             **Task: Generate 3 multiple-choice quiz questions with answer explanations (in JSON) based on a document page's content. First reason through the material, then write MCQs, choices, identify answers, give explanations, and output only JSON.**
-            """
-        )
-    ])
+        """
+    
+    prompt_template = ChatPromptTemplate.from_messages([("system", system_message_generate_quiz)])
     prompt = prompt_template.format(page_content=page_content)
     ai_logger.info('Prompt sent to LLM:\n%s', prompt)
     print("\n--- LLM Prompt ---\n", prompt, "\n--- END PROMPT ---\n")
-    llm = ChatOpenAI(model="gpt-3.5-turbo", temperature=0.7)
+    llm = ChatOpenAI(model="gpt-3.5-turbo", temperature=0.2)
     response = llm.invoke(prompt)
     ai_logger.info('Raw LLM response: %s', response.content)
     # Parse the JSON from the LLM response
