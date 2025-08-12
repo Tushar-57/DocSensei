@@ -2,3 +2,4 @@ Flask
 flask-cors
 werkzeug
 langchain
+python-dotenv
