@@ -92,7 +92,7 @@ export const DocumentUpload: React.FC<DocumentUploadProps> = ({ onDocumentUpload
     try {
       const formData = new FormData();
       formData.append('file', file);
-      const response = await fetch('http://localhost:5000/upload', {
+  const response = await fetch(`${import.meta.env.VITE_BACKEND_URL}/upload`, {
         method: 'POST',
         body: formData,
       });
@@ -108,7 +108,7 @@ export const DocumentUpload: React.FC<DocumentUploadProps> = ({ onDocumentUpload
     // Fetch extracted content from backend
     let extractedContent = '';
     try {
-      const extractResponse = await fetch('http://localhost:5000/extract', {
+  const extractResponse = await fetch(`${import.meta.env.VITE_BACKEND_URL}/extract`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ fileUrl }),

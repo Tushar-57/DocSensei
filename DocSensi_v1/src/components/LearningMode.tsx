@@ -120,7 +120,7 @@ export const LearningMode: React.FC<LearningModeProps> = ({ document, onBackToHo
     setLoadingQuiz(true);
     setQuizError(null);
     try {
-      const res = await fetch('http://localhost:5000/generate-quiz', {
+  const res = await fetch(`${import.meta.env.VITE_BACKEND_URL}/generate-quiz`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
