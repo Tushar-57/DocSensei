@@ -8,7 +8,25 @@ interface QuizProps {
   onQuizReset: () => void;
 }
 
+
 export const Quiz: React.FC<QuizProps> = ({ questions, onQuizComplete, onQuizReset }) => {
+  // Defensive: check for valid questions array and structure
+  if (!questions || !Array.isArray(questions) || questions.length === 0) {
+    return (
+      <div className="bg-red-500/10 border border-red-500/20 rounded-2xl p-6 text-center text-red-300 font-semibold animate-fade-in">
+        No quiz available for this page.
+      </div>
+    );
+  }
+  // Defensive: check for correctAnswer in all questions
+  if (questions.some((q: any) => typeof q.correctAnswer !== 'number')) {
+    return (
+      <div className="bg-red-500/10 border border-red-500/20 rounded-2xl p-6 text-center text-red-300 font-semibold animate-fade-in">
+        Quiz data is invalid or incomplete.
+      </div>
+    );
+  }
+
   const [currentQuestionIndex, setCurrentQuestionIndex] = useState(0);
   const [selectedAnswer, setSelectedAnswer] = useState<number | null>(null);
   const [showResult, setShowResult] = useState(false);

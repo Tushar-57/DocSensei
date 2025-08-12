@@ -10,6 +10,7 @@ import os
 from dotenv import load_dotenv
 from langchain_openai import ChatOpenAI
 from langchain_core.prompts import ChatPromptTemplate
+import prompt_library
 
 
 
@@ -62,60 +63,9 @@ def mcq_quiz_generator(page_content: str):
     ai_logger.info('mcq_quiz_generator received content: %s', page_content[:300])
 
     # Create the prompt template
-    system_message_generate_quiz = """
-            You are an expert educational content creator. Create a quiz by reading the provided document page content. Analyze the information step-by-step to produce 3 multiple-choice questions (MCQs) that assess understanding of key points from the content. For each MCQ, provide:
-
-            - The question text
-            - Four answer choices labeled \"A\", \"B\", \"C\", and \"D\"
-            - Indicate the correct answer (matching one of the choice labels)
-            - Write a concise explanation justifying the correct answer
-
-            Work through the document’s content methodically to ensure your questions test comprehension and not trivial details. Generate questions that each focus on a distinct, significant point from the material. Reason for the answer and explanation AFTER forming MCQs (reasoning before conclusion).
-
-            Use clear variable and field labeling. Output your result in well-formed JSON syntax, matching the structure below:
-
-            {{
-                "questions": [
-                    {{
-                        "question": "[question text]",
-                        "choices": {{
-                            "A": "[choice A]",
-                            "B": "[choice B]",
-                            "C": "[choice C]",
-                            "D": "[choice D]"
-                        }},
-                        "answer": "[A/B/C/D]",
-                        "explanation": "[explanation for why this answer is correct]"
-                    }},
-                    ...
-                ]
-            }}
-
-            # Examples
-
-            ### Example input:
-            ---
-            Document Page Content:
-            {page_content}
-            ---
-
-            # Output format:
-            Respond ONLY with the JSON structure for the quiz as shown above. Do not include code blocks or extra commentary—just the JSON.
-
-            # Important reminders:
-            - Carefully reason through the document content before generating questions.
-            - Explanation and answer selection must come AFTER question and choices are generated.
-            - Output only JSON, no code blocks or extra text.
-            - Use the provided structure exactly, matching field names and format.
-            - Three MCQs per document page.
-            - Each explanation relates to its correct answer.
-
-            ---
-
-            **Task: Generate 3 multiple-choice quiz questions with answer explanations (in JSON) based on a document page's content. First reason through the material, then write MCQs, choices, identify answers, give explanations, and output only JSON.**
-        """
     
-    prompt_template = ChatPromptTemplate.from_messages([("system", system_message_generate_quiz)])
+    # prompt_template = ChatPromptTemplate.from_messages([("system", prompt_library.system_message_generate_quiz)])
+    prompt_template = ChatPromptTemplate.from_messages([("system", prompt_library.prompt_generate_quiz_v1)])
     prompt = prompt_template.format(page_content=page_content)
     ai_logger.info('Prompt sent to LLM:\n%s', prompt)
     print("\n--- LLM Prompt ---\n", prompt, "\n--- END PROMPT ---\n")
@@ -125,20 +75,27 @@ def mcq_quiz_generator(page_content: str):
     # Parse the JSON from the LLM response
     try:
         result = json.loads(response.content)
-        questions = result["questions"]
-        # Convert to frontend format: options as array, correctAnswer as index
-        formatted = []
-        for idx, q in enumerate(questions):
-            options = [q["choices"][k] for k in ["A", "B", "C", "D"]]
-            answer_idx = ["A", "B", "C", "D"].index(q["answer"].strip())
-            formatted.append({
-                "id": f"q{idx+1}",
-                "question": q["question"],
-                "options": options,
-                "correctAnswer": answer_idx,
-                "explanation": q["explanation"]
-            })
-        return formatted
+        if "questions" in result:
+            questions = result["questions"]
+            # Convert to frontend format: options as array, correctAnswer as index
+            formatted = []
+            for idx, q in enumerate(questions):
+                options = [q["choices"][k] for k in ["A", "B", "C", "D"]]
+                answer_idx = ["A", "B", "C", "D"].index(q["answer"].strip())
+                formatted.append({
+                    "id": f"q{idx+1}",
+                    "question": q["question"],
+                    "options": options,
+                    "correctAnswer": answer_idx,
+                    "explanation": q["explanation"]
+                })
+            return {"questions": formatted}
+        elif "result" in result:
+            return {"result": result["result"]}
+        elif "error" in result:
+            return {"error": result["error"]}
+        else:
+            return {"error": "Unknown LLM response format."}
     except Exception as e:
         ai_logger.error('Failed to parse LLM quiz JSON: %s', e)
-        raise
+        return {"error": f"Failed to parse LLM quiz JSON: {e}"}

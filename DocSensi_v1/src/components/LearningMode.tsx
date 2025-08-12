@@ -17,6 +17,7 @@ export const LearningMode: React.FC<LearningModeProps> = ({ document, onBackToHo
   const [loadingQuiz, setLoadingQuiz] = useState(false);
   const [quizQuestions, setQuizQuestions] = useState<QuizQuestion[] | null>(null);
   const [quizError, setQuizError] = useState<string | null>(null);
+  const [quizAutoAdvance, setQuizAutoAdvance] = useState(true); // Switch for auto-advance
 
   const currentPage = document.pages[currentPageIndex];
   const totalPages = document.pages.length;
@@ -130,8 +131,28 @@ export const LearningMode: React.FC<LearningModeProps> = ({ document, onBackToHo
       });
       if (!res.ok) throw new Error('Failed to fetch quiz');
       const data = await res.json();
-      setQuizQuestions(data.questions);
-      setShowQuiz(true);
+      if (data.result === 'Not a quizable page' && quizAutoAdvance) {
+        // Mark as completed and auto-advance
+        const newCompletedPages = new Set(completedPages);
+        newCompletedPages.add(currentPageIndex);
+        setCompletedPages(newCompletedPages);
+        setShowQuiz(false);
+        setQuizQuestions(null);
+        // Move to next page if possible
+        if (currentPageIndex < document.pages.length - 1) {
+          setCurrentPageIndex(currentPageIndex + 1);
+        }
+        setLoadingQuiz(false);
+        return;
+      }
+      if (data.questions) {
+        setQuizQuestions(data.questions);
+        setShowQuiz(true);
+      } else if (data.error) {
+        setQuizError(data.error);
+      } else {
+        setQuizError('No quiz available for this page.');
+      }
     } catch (err: any) {
       setQuizError(err.message || 'Error fetching quiz');
     } finally {
@@ -207,6 +228,20 @@ export const LearningMode: React.FC<LearningModeProps> = ({ document, onBackToHo
       </div>
 
       <div className="relative z-10 max-w-7xl mx-auto px-6 py-8">
+        {/* Auto-advance switch */}
+        <div className="flex items-center mb-4">
+          <label className="flex items-center cursor-pointer select-none">
+            <input
+              type="checkbox"
+              checked={quizAutoAdvance}
+              onChange={() => setQuizAutoAdvance(v => !v)}
+              className="form-checkbox h-5 w-5 text-blue-600"
+            />
+            <span className="ml-2 text-white/80 dark:text-white/70 text-sm">
+              Auto-advance on non-quizable page
+            </span>
+          </label>
+        </div>
         <div className="grid xl:grid-cols-10 gap-8">
           {/* Document Viewer - 70% */}
           <div className="space-y-6 xl:col-span-7">
