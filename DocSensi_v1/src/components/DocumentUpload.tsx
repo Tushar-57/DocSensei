@@ -70,12 +70,13 @@ export const DocumentUpload: React.FC<DocumentUploadProps> = ({ onDocumentUpload
   const [isUploading, setIsUploading] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
+
   const handleFileSelect = async (file: File) => {
     if (!file) return;
 
     const fileType = file.type;
-    const isValidType = 
-      fileType === 'application/pdf' || 
+    const isValidType =
+      fileType === 'application/pdf' ||
       fileType === 'application/vnd.openxmlformats-officedocument.wordprocessingml.document' ||
       fileType === 'application/msword';
 
@@ -91,47 +92,63 @@ export const DocumentUpload: React.FC<DocumentUploadProps> = ({ onDocumentUpload
     try {
       const formData = new FormData();
       formData.append('file', file);
-      // Replace the URL below with your backend upload endpoint
       const response = await fetch('http://localhost:5000/upload', {
         method: 'POST',
         body: formData,
       });
       if (!response.ok) throw new Error('Upload failed');
       const data = await response.json();
-      fileUrl = data.fileUrl; // The backend should return { fileUrl: '...' }
+      fileUrl = data.fileUrl;
     } catch (err) {
       setIsUploading(false);
       alert('File upload failed. Please try again.');
       return;
     }
 
-    // Create document object with fileUrl
+    // Fetch extracted content from backend
+    let extractedContent = '';
+    try {
+      const extractResponse = await fetch('http://localhost:5000/extract', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ fileUrl }),
+      });
+      if (!extractResponse.ok) throw new Error('Extraction failed');
+      const extractData = await extractResponse.json();
+      extractedContent = extractData.content || '';
+    } catch (err) {
+      setIsUploading(false);
+      alert('Failed to extract document content.');
+      return;
+    }
+
+    // Split extracted content into pages (simple split by length, can be improved)
+    const PAGE_LENGTH = 1200;
+    const pages = [];
+    for (let i = 0; i < extractedContent.length; i += PAGE_LENGTH) {
+      pages.push({
+        id: `page-${pages.length + 1}`,
+        number: pages.length + 1,
+        content: extractedContent.slice(i, i + PAGE_LENGTH),
+        completed: false,
+      });
+    }
+
     const uploadedDocument: Document = {
       id: Math.random().toString(36).substr(2, 9),
       name: file.name,
       type: fileType.includes('pdf') ? 'PDF' : 'Word',
-      content: 'Document content loaded successfully',
-      pages: generateMockPages(),
+      content: extractedContent,
+      pages,
       uploadedAt: new Date(),
-      fileUrl, // Add fileUrl to Document
+      fileUrl,
     };
 
     setIsUploading(false);
     onDocumentUploaded(uploadedDocument);
   };
 
-  const generateMockPages = (): any[] => {
-    const pages = [];
-    for (let i = 1; i <= 12; i++) {
-      pages.push({
-        id: `page-${i}`,
-        number: i,
-        content: `This is the content of page ${i}. It contains comprehensive educational material covering advanced topics in science, mathematics, literature, and critical thinking. Students engage with interactive content designed to enhance understanding through practical examples, detailed explanations, and thought-provoking questions that encourage deeper learning and retention.`,
-        completed: false,
-      });
-    }
-    return pages;
-  };
+  // generateMockPages removed; now using real extracted content from backend
 
   const handleDragOver = (e: React.DragEvent) => {
     e.preventDefault();

@@ -1,10 +1,13 @@
-
 from flask import Flask, request, jsonify, send_from_directory, url_for
 from flask_cors import CORS
 import os
 from werkzeug.utils import secure_filename
-from langchain_utils import extract_text_from_pdf
+
+from langchain_utils import extract_text_from_pdf, mcq_quiz_generator
 from logger import get_logger
+from dotenv import load_dotenv
+
+load_dotenv()
 
 system_logger = get_logger('SYSTEM')
 ai_logger = get_logger('AI')
@@ -13,7 +16,7 @@ UPLOAD_FOLDER = 'uploads'
 ALLOWED_EXTENSIONS = {'pdf', 'doc', 'docx'}
 
 app = Flask(__name__)
-CORS(app)
+CORS(app, resources={r"/*": {"origins": "*"}}, supports_credentials=True)
 app.config['UPLOAD_FOLDER'] = UPLOAD_FOLDER
 
 os.makedirs(UPLOAD_FOLDER, exist_ok=True)
@@ -64,6 +67,26 @@ def extract_content():
     content = extract_text_from_pdf(file_path)
     ai_logger.info(f'Extraction complete for {file_path}')
     return jsonify({'content': content})
+
+@app.route('/generate-quiz', methods=['POST'])
+def generate_quiz():
+    data = request.json
+    page_content = data.get('pageContent')
+    page_number = data.get('pageNumber')
+    document_id = data.get('documentId')
+    if not page_content:
+        ai_logger.error('No page content provided for quiz generation')
+        return jsonify({'error': 'No page content provided'}), 400
+    try:
+        ai_logger.info('Generating quiz for document %s, page %s', document_id, page_number)
+        print("\n--- Document Page Content for Quiz Generation ---\n", page_content, "\n--- END ---\n")
+        quiz = mcq_quiz_generator(page_content)
+        ai_logger.info('Quiz generation complete')
+        return jsonify({'questions': quiz})
+    except Exception as e:
+        ai_logger.error('Quiz generation failed: %s', e)
+        return jsonify({'error': str(e)}), 500
+
 
 if __name__ == '__main__':
     app.run(debug=True, port=5000)
