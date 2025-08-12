@@ -14,6 +14,9 @@ export const LearningMode: React.FC<LearningModeProps> = ({ document, onBackToHo
   const [currentPageIndex, setCurrentPageIndex] = useState(0);
   const [completedPages, setCompletedPages] = useState<Set<number>>(new Set());
   const [showQuiz, setShowQuiz] = useState(false);
+  const [loadingQuiz, setLoadingQuiz] = useState(false);
+  const [quizQuestions, setQuizQuestions] = useState<QuizQuestion[] | null>(null);
+  const [quizError, setQuizError] = useState<string | null>(null);
 
   const currentPage = document.pages[currentPageIndex];
   const totalPages = document.pages.length;
@@ -73,23 +76,18 @@ export const LearningMode: React.FC<LearningModeProps> = ({ document, onBackToHo
     ];
   };
 
-  const [quizQuestions] = useState(() => generateQuizQuestions());
 
-  useEffect(() => {
-    // Show quiz automatically when entering a new page that hasn't been completed
-    if (!completedPages.has(currentPageIndex)) {
-      const timer = setTimeout(() => {
-        setShowQuiz(true);
-      }, 3000); // Show quiz after 3 seconds of reading
-      return () => clearTimeout(timer);
-    }
-  }, [currentPageIndex, completedPages]);
+
+
+  // No auto-show quiz. Quiz is started by button click.
+
 
   const handleQuizComplete = () => {
     const newCompletedPages = new Set(completedPages);
     newCompletedPages.add(currentPageIndex);
     setCompletedPages(newCompletedPages);
     setShowQuiz(false);
+    setQuizQuestions(null);
   };
 
   const handleQuizReset = () => {
@@ -113,6 +111,31 @@ export const LearningMode: React.FC<LearningModeProps> = ({ document, onBackToHo
     if (currentPageIndex > 0) {
       setCurrentPageIndex(prev => prev - 1);
       setShowQuiz(false);
+    }
+  };
+
+  // Fetch quiz questions from backend
+  const fetchQuizQuestions = async () => {
+    setLoadingQuiz(true);
+    setQuizError(null);
+    try {
+      const res = await fetch('http://localhost:5000/generate-quiz', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          pageContent: currentPage.content,
+          pageNumber: currentPage.number,
+          documentId: document.id,
+        }),
+      });
+      if (!res.ok) throw new Error('Failed to fetch quiz');
+      const data = await res.json();
+      setQuizQuestions(data.questions);
+      setShowQuiz(true);
+    } catch (err: any) {
+      setQuizError(err.message || 'Error fetching quiz');
+    } finally {
+      setLoadingQuiz(false);
     }
   };
 
@@ -184,15 +207,16 @@ export const LearningMode: React.FC<LearningModeProps> = ({ document, onBackToHo
       </div>
 
       <div className="relative z-10 max-w-7xl mx-auto px-6 py-8">
-        <div className="grid xl:grid-cols-2 gap-8">
-          {/* Document Viewer */}
-          <div className="space-y-6">
+        <div className="grid xl:grid-cols-10 gap-8">
+          {/* Document Viewer - 70% */}
+          <div className="space-y-6 xl:col-span-7">
             <DocumentViewer 
               page={{
                 ...currentPage,
                 completed: completedPages.has(currentPageIndex)
               }} 
-              totalPages={totalPages} 
+              totalPages={totalPages}
+              document={document}
             />
 
             {/* Navigation */}
@@ -224,7 +248,7 @@ export const LearningMode: React.FC<LearningModeProps> = ({ document, onBackToHo
                       <button
                         key={i}
                         onClick={() => {
-                          if (i <= currentPageIndex || completedPages.has(i)) {
+                          if ((i === currentPageIndex) || completedPages.has(i)) {
                             setCurrentPageIndex(i);
                             setShowQuiz(false);
                           }
@@ -235,9 +259,9 @@ export const LearningMode: React.FC<LearningModeProps> = ({ document, onBackToHo
                             ? 'bg-blue-400 shadow-glow-blue' 
                             : completedPages.has(i)
                               ? 'bg-green-400 shadow-glow cursor-pointer'
-                              : 'bg-white/30 hover:bg-white/50'
+                              : 'bg-white/30'
                           }
-                          ${(i <= currentPageIndex || completedPages.has(i)) ? 'cursor-pointer' : 'cursor-not-allowed opacity-50'}
+                          ${(i === currentPageIndex || completedPages.has(i)) ? 'cursor-pointer' : 'cursor-not-allowed opacity-50'}
                         `}
                       />
                     ))}
@@ -273,9 +297,9 @@ export const LearningMode: React.FC<LearningModeProps> = ({ document, onBackToHo
             </div>
           </div>
 
-          {/* Quiz Section */}
-          <div className="space-y-6">
-            {showQuiz || !completedPages.has(currentPageIndex) ? (
+          {/* Quiz Section - 30% */}
+          <div className="space-y-6 xl:col-span-3">
+            {showQuiz && quizQuestions ? (
               <Quiz
                 questions={quizQuestions}
                 onQuizComplete={handleQuizComplete}
@@ -283,46 +307,50 @@ export const LearningMode: React.FC<LearningModeProps> = ({ document, onBackToHo
               />
             ) : (
               <div className="
-                bg-white/10 dark:bg-dark-800/10 backdrop-blur-xl rounded-3xl p-8
+                bg-white/10 dark:bg-dark-800/10 backdrop-blur-xl rounded-3xl p-6
                 border border-white/20 dark:border-dark-700/20
                 shadow-glass dark:shadow-glass-dark
                 text-center animate-scale-in
+                max-w-xs mx-auto flex flex-col items-center justify-center min-h-[340px]
               ">
-                <div className="space-y-6">
+                <div className="space-y-6 w-full">
                   <div className="relative">
-                    <BookOpen className="w-16 h-16 text-green-400 mx-auto animate-float" />
-                    <div className="absolute inset-0 w-16 h-16 bg-green-400/30 rounded-full blur-xl mx-auto"></div>
+                    <BookOpen className="w-16 h-16 text-purple-400 mx-auto animate-float" />
+                    <div className="absolute inset-0 w-16 h-16 bg-purple-400/30 rounded-full blur-xl mx-auto"></div>
                   </div>
-                  
                   <div className="space-y-3">
                     <h3 className="text-2xl font-bold text-white dark:text-white font-geist">
-                      Page Mastered!
+                      Ready for a Knowledge Check?
                     </h3>
                     <p className="text-white/80 dark:text-white/70 leading-relaxed">
-                      Excellent work! You've successfully completed this page. 
-                      You can now advance to the next section or review the quiz.
+                      Test your understanding of this page before moving on!
                     </p>
                   </div>
-
-                  <div className="bg-green-500/20 border border-green-500/30 rounded-2xl p-4">
-                    <p className="text-green-400 font-medium">
-                      ✨ Ready to continue your learning journey!
-                    </p>
-                  </div>
-
+                  {quizError && (
+                    <div className="text-red-400 text-sm font-medium">{quizError}</div>
+                  )}
                   <button
-                    onClick={() => setShowQuiz(true)}
+                    onClick={fetchQuizQuestions}
+                    disabled={loadingQuiz}
                     className="
                       relative group/btn overflow-hidden
-                      bg-gradient-purple hover:shadow-glow text-white px-6 py-3 rounded-2xl
-                      font-semibold transition-all duration-300 
-                      transform hover:scale-105 hover:-translate-y-1
+                      bg-gradient-to-r from-yellow-400 via-pink-500 to-purple-600
+                      text-white px-8 py-4 rounded-2xl font-semibold text-lg
+                      transition-all duration-300 transform hover:scale-105 hover:-translate-y-1
                       focus:outline-none focus:ring-4 focus:ring-purple-300/50
-                      shadow-lg hover:shadow-xl
+                      shadow-xl hover:shadow-2xl
+                      glitter-btn
+                      disabled:opacity-60 disabled:cursor-not-allowed
                     "
+                    style={{
+                      boxShadow: '0 0 16px 2px #f472b6, 0 0 32px 4px #a78bfa',
+                      backgroundSize: '200% 200%',
+                      animation: loadingQuiz ? 'pulse 1s infinite' : 'glitter 2s infinite',
+                    }}
                   >
-                    <div className="absolute inset-0 bg-gradient-to-r from-purple-600 to-pink-600 opacity-0 group-hover/btn:opacity-100 transition-opacity duration-300"></div>
-                    <span className="relative">Review Quiz</span>
+                    <span className="relative flex items-center justify-center">
+                      {loadingQuiz ? 'Loading...' : '✨ Start Quiz'}
+                    </span>
                   </button>
                 </div>
               </div>

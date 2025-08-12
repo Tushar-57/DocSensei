@@ -86,21 +86,38 @@ export const DocumentUpload: React.FC<DocumentUploadProps> = ({ onDocumentUpload
 
     setIsUploading(true);
 
-    // Simulate document processing with realistic delay
-    await new Promise(resolve => setTimeout(resolve, 2500));
+    // Upload file to backend
+    let fileUrl = '';
+    try {
+      const formData = new FormData();
+      formData.append('file', file);
+      // Replace the URL below with your backend upload endpoint
+      const response = await fetch('http://localhost:5000/upload', {
+        method: 'POST',
+        body: formData,
+      });
+      if (!response.ok) throw new Error('Upload failed');
+      const data = await response.json();
+      fileUrl = data.fileUrl; // The backend should return { fileUrl: '...' }
+    } catch (err) {
+      setIsUploading(false);
+      alert('File upload failed. Please try again.');
+      return;
+    }
 
-    // Create mock document with pages
-    const mockDocument: Document = {
+    // Create document object with fileUrl
+    const uploadedDocument: Document = {
       id: Math.random().toString(36).substr(2, 9),
       name: file.name,
       type: fileType.includes('pdf') ? 'PDF' : 'Word',
       content: 'Document content loaded successfully',
       pages: generateMockPages(),
       uploadedAt: new Date(),
+      fileUrl, // Add fileUrl to Document
     };
 
     setIsUploading(false);
-    onDocumentUploaded(mockDocument);
+    onDocumentUploaded(uploadedDocument);
   };
 
   const generateMockPages = (): any[] => {

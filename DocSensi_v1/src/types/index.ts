@@ -5,6 +5,7 @@ export interface Document {
   content: string;
   pages: Page[];
   uploadedAt: Date;
+  fileUrl?: string; // URL to the uploaded file
 }
 
 export interface Page {

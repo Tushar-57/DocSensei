@@ -1,13 +1,18 @@
 import React from 'react';
-import { Page } from '../types';
+import { Page, Document } from '../types';
 import { CheckCircle, BookOpen } from 'lucide-react';
 
 interface DocumentViewerProps {
   page: Page;
   totalPages: number;
+  document?: Document;
 }
 
-export const DocumentViewer: React.FC<DocumentViewerProps> = ({ page, totalPages }) => {
+export const DocumentViewer: React.FC<DocumentViewerProps> = ({ page, totalPages, document }) => {
+  // If fileUrl is present, render the file (PDF/Word)
+  const fileUrl = document?.fileUrl;
+  const docType = document?.type;
+
   return (
     <div className="
       bg-white/10 dark:bg-dark-800/10 backdrop-blur-xl rounded-3xl p-8
@@ -34,7 +39,6 @@ export const DocumentViewer: React.FC<DocumentViewerProps> = ({ page, totalPages
             </p>
           </div>
         </div>
-        
         {page.completed && (
           <div className="flex items-center space-x-2 bg-green-500/20 text-green-400 px-4 py-2 rounded-2xl border border-green-500/30">
             <CheckCircle className="w-5 h-5" />
@@ -42,7 +46,7 @@ export const DocumentViewer: React.FC<DocumentViewerProps> = ({ page, totalPages
           </div>
         )}
       </div>
-      
+
       {/* Content */}
       <div className="relative">
         <div className="
@@ -51,12 +55,32 @@ export const DocumentViewer: React.FC<DocumentViewerProps> = ({ page, totalPages
           shadow-inner-glow
         ">
           <div className="prose prose-lg max-w-none">
-            <p className="text-white/90 dark:text-white/80 leading-relaxed text-lg font-light">
-              {page.content}
-            </p>
+            {fileUrl && docType === 'PDF' ? (
+              <iframe
+                src={fileUrl}
+                title="PDF Document"
+                width="100%"
+                height="600px"
+                style={{ border: 'none', background: 'white', borderRadius: '12px' }}
+              />
+            ) : fileUrl && docType === 'Word' ? (
+              <div>
+                <a
+                  href={fileUrl}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="text-blue-400 underline"
+                >
+                  Download and view Word document
+                </a>
+              </div>
+            ) : (
+              <p className="text-white/90 dark:text-white/80 leading-relaxed text-lg font-light">
+                {page.content}
+              </p>
+            )}
           </div>
         </div>
-        
         {/* Decorative elements */}
         <div className="absolute -top-2 -left-2 w-4 h-4 bg-purple-400/30 rounded-full blur-sm"></div>
         <div className="absolute -bottom-2 -right-2 w-6 h-6 bg-blue-400/20 rounded-full blur-sm"></div>
