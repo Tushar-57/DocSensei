@@ -1,0 +1,19 @@
+/* PDF.js TextLayer and AnnotationLayer styles for react-pdf */
+.react-pdf__Page__textContent {
+  display: block;
+}
+
+.react-pdf__Page__annotations {
+  display: block;
+}
+
+/* Only style the extracted text container, not the PDF.js layers */
+.extracted-text-container {
+  background: rgba(255,255,255,0.8);
+  border-radius: 0.75rem;
+  padding: 1.5rem;
+  box-shadow: 0 2px 8px 0 rgba(0,0,0,0.04);
+  border: 1px solid #bfdbfe;
+  max-height: 600px;
+  overflow-y: auto;
+}
