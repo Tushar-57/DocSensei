@@ -20,7 +20,7 @@ CORS(app, resources={r"/*": {"origins": "*"}}, supports_credentials=True)
 app.config['UPLOAD_FOLDER'] = UPLOAD_FOLDER
 
 os.makedirs(UPLOAD_FOLDER, exist_ok=True)
-
+ 
 def allowed_file(filename):
     return '.' in filename and \
            filename.rsplit('.', 1)[1].lower() in ALLOWED_EXTENSIONS
@@ -66,23 +66,30 @@ def extract_content():
     ai_logger.info(f'Extracting content from {file_path}')
     content = extract_text_from_pdf(file_path)
     ai_logger.info(f'Extraction complete for {file_path}')
-    return jsonify({'content': content})
+    # If PDF, content is a list of page texts; if text file, it's a list with one item
+    return jsonify({'pages': content})
 
 @app.route('/generate-quiz', methods=['POST'])
 def generate_quiz():
     data = request.json
-    page_content = data.get('pageContent')
+    ai_logger.info(f"[generate-quiz] Received request body: {data}")
+    pages = data.get('pages')
     page_number = data.get('pageNumber')
     document_id = data.get('documentId')
-    if not page_content:
-        ai_logger.error('No page content provided for quiz generation')
-        return jsonify({'error': 'No page content provided'}), 400
+    if not pages or not isinstance(pages, list):
+        ai_logger.error(f'No pages provided for quiz generation. Got: {pages}')
+        return jsonify({'error': 'No pages provided'}), 400
     try:
+        idx = int(page_number) - 1 if page_number else 0
+        if idx < 0 or idx >= len(pages):
+            page_content = pages[0]
+        else:
+            page_content = pages[idx]
         ai_logger.info('Generating quiz for document %s, page %s', document_id, page_number)
         print("\n--- Document Page Content for Quiz Generation ---\n", page_content, "\n--- END ---\n")
         quiz = mcq_quiz_generator(page_content)
         ai_logger.info('Quiz generation complete')
-        return jsonify({'questions': quiz})
+        return jsonify(quiz)
     except Exception as e:
         ai_logger.error('Quiz generation failed: %s', e)
         return jsonify({'error': str(e)}), 500

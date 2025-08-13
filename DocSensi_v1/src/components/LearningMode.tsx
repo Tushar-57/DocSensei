@@ -18,10 +18,12 @@ export const LearningMode: React.FC<LearningModeProps> = ({ document, onBackToHo
   const [quizQuestions, setQuizQuestions] = useState<QuizQuestion[] | null>(null);
   const [quizError, setQuizError] = useState<string | null>(null);
   const [quizAutoAdvance, setQuizAutoAdvance] = useState(true); // Switch for auto-advance
+  const [pageValid, setPageValid] = useState(false); // Track if current page is valid for navigation
 
-  const currentPage = document.pages[currentPageIndex];
-  const totalPages = document.pages.length;
-  const overallProgress = (completedPages.size / totalPages) * 100;
+  const pages = Array.isArray(document.pages) ? document.pages : [];
+  const currentPage = pages[currentPageIndex] || { content: '', number: currentPageIndex + 1 };
+  const totalPages = pages.length;
+  const overallProgress = totalPages > 0 ? (completedPages.size / totalPages) * 100 : 0;
 
   // Generate mock quiz questions for the current page
   const generateQuizQuestions = (): QuizQuestion[] => {
@@ -89,29 +91,36 @@ export const LearningMode: React.FC<LearningModeProps> = ({ document, onBackToHo
     setCompletedPages(newCompletedPages);
     setShowQuiz(false);
     setQuizQuestions(null);
+    setPageValid(true);
   };
 
   const handleQuizReset = () => {
     const newCompletedPages = new Set(completedPages);
     newCompletedPages.delete(currentPageIndex);
     setCompletedPages(newCompletedPages);
+    setPageValid(false);
   };
 
   const canNavigateToNext = () => {
-    return completedPages.has(currentPageIndex);
+    return completedPages.has(currentPageIndex) && pageValid;
   };
 
   const handleNextPage = () => {
     if (currentPageIndex < totalPages - 1 && canNavigateToNext()) {
-      setCurrentPageIndex(prev => prev + 1);
+      const nextIndex = currentPageIndex + 1;
+      setCurrentPageIndex(nextIndex);
       setShowQuiz(false);
+      // If the next page is completed, set pageValid true, else false
+      setPageValid(completedPages.has(nextIndex));
     }
   };
 
   const handlePrevPage = () => {
     if (currentPageIndex > 0) {
-      setCurrentPageIndex(prev => prev - 1);
+      const prevIndex = currentPageIndex - 1;
+      setCurrentPageIndex(prevIndex);
       setShowQuiz(false);
+      setPageValid(completedPages.has(prevIndex));
     }
   };
 
@@ -120,48 +129,66 @@ export const LearningMode: React.FC<LearningModeProps> = ({ document, onBackToHo
     setLoadingQuiz(true);
     setQuizError(null);
     try {
-  const res = await fetch(`${import.meta.env.VITE_BACKEND_URL}/generate-quiz`, {
+      // Defensive: ensure pages and currentPage are valid
+      if (!Array.isArray(pages) || !currentPage || typeof currentPage.number !== 'number') {
+        setQuizError('Invalid page data.');
+        setLoadingQuiz(false);
+        return;
+      }
+      const quizPayload = {
+        pages: pages.map(p => p.content),
+        pageNumber: currentPage.number,
+        documentId: document.id,
+      };
+      console.log('[Quiz Fetch] Sending payload:', quizPayload);
+      const res = await fetch(`${import.meta.env.VITE_BACKEND_URL}/generate-quiz`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          pageContent: currentPage.content,
-          pageNumber: currentPage.number,
-          documentId: document.id,
-        }),
+        body: JSON.stringify(quizPayload),
       });
       if (!res.ok) throw new Error('Failed to fetch quiz');
       const data = await res.json();
-      if (data.result === 'Not a quizable page' && quizAutoAdvance) {
-        // Mark as completed and auto-advance
+      // Debug: log the received data structure
+      console.log('[Quiz Fetch] Received data:', data);
+      // Defensive: check for questions array
+      if (data && Array.isArray(data.questions) && data.questions.length > 0) {
+        setQuizQuestions(data.questions);
+        setShowQuiz(true);
+        setPageValid(true);
+      } else if (data.valid && (!data.questions || data.questions.length === 0)) {
+        // If valid and no questions, mark as completed and allow next
         const newCompletedPages = new Set(completedPages);
         newCompletedPages.add(currentPageIndex);
         setCompletedPages(newCompletedPages);
         setShowQuiz(false);
         setQuizQuestions(null);
-        // Move to next page if possible
-        if (currentPageIndex < document.pages.length - 1) {
+        setPageValid(true);
+        if (quizAutoAdvance && currentPageIndex < totalPages - 1) {
           setCurrentPageIndex(currentPageIndex + 1);
+          setPageValid(false);
         }
-        setLoadingQuiz(false);
-        return;
-      }
-      if (data.questions) {
-        setQuizQuestions(data.questions);
-        setShowQuiz(true);
       } else if (data.error) {
-        setQuizError(data.error);
+        // Handle LLM output parsing failure with a user-friendly message
+        if (typeof data.error === 'string' && data.error.includes('OUTPUT_PARSING_FAILURE')) {
+          setQuizError('The AI could not generate a valid quiz for this page. Please try again or check if the page has enough meaningful content.');
+        } else {
+          setQuizError(data.error);
+        }
+        setPageValid(false);
       } else {
         setQuizError('No quiz available for this page.');
+        setPageValid(false);
       }
     } catch (err: any) {
       setQuizError(err.message || 'Error fetching quiz');
+      setPageValid(false);
     } finally {
       setLoadingQuiz(false);
     }
   };
 
   return (
-    <div className="min-h-screen bg-gradient-hero dark:bg-gradient-hero-dark relative overflow-hidden">
+  <div className="min-h-screen bg-gradient-hero dark:bg-gradient-hero-dark relative overflow-hidden" style={{ overflow: 'hidden' }}>
       {/* Animated background elements */}
       <div className="absolute inset-0 overflow-hidden">
         <div className="absolute top-20 right-20 w-64 h-64 bg-blue-500/10 rounded-full blur-3xl animate-float"></div>

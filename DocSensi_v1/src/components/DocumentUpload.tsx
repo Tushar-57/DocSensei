@@ -105,40 +105,36 @@ export const DocumentUpload: React.FC<DocumentUploadProps> = ({ onDocumentUpload
       return;
     }
 
-    // Fetch extracted content from backend
-    let extractedContent = '';
+    // Fetch extracted content from backend (now returns { pages: string[] })
+    let extractedPages: string[] = [];
     try {
-  const extractResponse = await fetch(`${import.meta.env.VITE_BACKEND_URL}/extract`, {
+      const extractResponse = await fetch(`${import.meta.env.VITE_BACKEND_URL}/extract`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ fileUrl }),
       });
       if (!extractResponse.ok) throw new Error('Extraction failed');
       const extractData = await extractResponse.json();
-      extractedContent = extractData.content || '';
+      extractedPages = Array.isArray(extractData.pages) ? extractData.pages : [];
     } catch (err) {
       setIsUploading(false);
       alert('Failed to extract document content.');
       return;
     }
 
-    // Split extracted content into pages (simple split by length, can be improved)
-    const PAGE_LENGTH = 1200;
-    const pages = [];
-    for (let i = 0; i < extractedContent.length; i += PAGE_LENGTH) {
-      pages.push({
-        id: `page-${pages.length + 1}`,
-        number: pages.length + 1,
-        content: extractedContent.slice(i, i + PAGE_LENGTH),
-        completed: false,
-      });
-    }
+    // Map backend pages to Document.pages
+    const pages = extractedPages.map((content, idx) => ({
+      id: `page-${idx + 1}`,
+      number: idx + 1,
+      content,
+      completed: false,
+    }));
 
     const uploadedDocument: Document = {
       id: Math.random().toString(36).substr(2, 9),
       name: file.name,
       type: fileType.includes('pdf') ? 'PDF' : 'Word',
-      content: extractedContent,
+      content: extractedPages.join('\n\n'),
       pages,
       uploadedAt: new Date(),
       fileUrl,
