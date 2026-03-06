@@ -12,10 +12,11 @@ interface FreeReadingModeProps {
 
 export const FreeReadingMode: React.FC<FreeReadingModeProps> = ({ document, onBackToHome }) => {
   const [currentPageIndex, setCurrentPageIndex] = useState(0);
+  const [isAILoading, setIsAILoading] = useState(false);
   const [chatMessages, setChatMessages] = useState<ChatMessage[]>([
     {
       id: '1',
-      text: "Welcome to your personalized reading experience! I'm here to help you understand the content, answer questions, and provide insights as you explore the document. Feel free to ask me anything!",
+      text: "Welcome! I'm your AI learning assistant for this document. Ask me anything about the content on the current page — I'll give you real answers based on what's written there.",
       sender: 'ai',
       timestamp: new Date(),
     }
@@ -25,41 +26,46 @@ export const FreeReadingMode: React.FC<FreeReadingModeProps> = ({ document, onBa
   const totalPages = document.pages.length;
   const readingProgress = ((currentPageIndex + 1) / totalPages) * 100;
 
-  const handleSendMessage = (message: string) => {
-    // Add user message
+  const handleSendMessage = async (message: string) => {
     const userMessage: ChatMessage = {
       id: Date.now().toString(),
       text: message,
       sender: 'user',
       timestamp: new Date(),
     };
-
     setChatMessages(prev => [...prev, userMessage]);
+    setIsAILoading(true);
 
-    // Simulate AI response after a short delay
-    setTimeout(() => {
+    try {
+      const res = await fetch(`${import.meta.env.VITE_BACKEND_URL}/chat`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          message,
+          context: currentPage?.content || '',
+          documentName: document.name,
+          history: chatMessages.slice(-6),
+        }),
+      });
+      const data = await res.json();
       const aiResponse: ChatMessage = {
         id: (Date.now() + 1).toString(),
-        text: generateAIResponse(message, currentPageIndex + 1),
+        text: data.response || 'Sorry, I could not generate a response. Please try again.',
         sender: 'ai',
         timestamp: new Date(),
       };
       setChatMessages(prev => [...prev, aiResponse]);
-    }, 1200);
-  };
-
-  const generateAIResponse = (userMessage: string, pageNumber: number): string => {
-    const responses = [
-      `Great question about page ${pageNumber}! This section focuses on key concepts that build upon previous material. Let me break down the main ideas for you.`,
-      `I can see why that part might be interesting. The content on this page introduces important principles that connect to broader themes throughout the document.`,
-      `That's an insightful observation! This particular section emphasizes practical applications of the theoretical concepts we've been exploring.`,
-      `Excellent point! The author presents this information in a way that encourages critical thinking about the subject matter.`,
-      `This is indeed a crucial part of the document. The concepts here form the foundation for understanding more advanced topics that come later.`,
-      `I'm glad you asked about that! This section provides valuable context that helps illuminate the broader narrative of the document.`,
-      `That's a thoughtful question. The material on this page demonstrates how different concepts interconnect and support each other.`,
-      `You've identified an important theme! This content showcases practical examples that make abstract concepts more concrete and understandable.`
-    ];
-    return responses[Math.floor(Math.random() * responses.length)];
+    } catch {
+      const errorResponse: ChatMessage = {
+        id: (Date.now() + 1).toString(),
+        text: 'Sorry, I encountered a connection error. Please check the backend is running and try again.',
+        sender: 'ai',
+        timestamp: new Date(),
+      };
+      setChatMessages(prev => [...prev, errorResponse]);
+    } finally {
+      setIsAILoading(false);
+    }
   };
 
   const handleNextPage = () => {
@@ -148,7 +154,7 @@ export const FreeReadingMode: React.FC<FreeReadingModeProps> = ({ document, onBa
       <div className="relative z-10 max-w-7xl mx-auto px-6 py-8">
         <div className="space-y-6">
           {/* Document Viewer */}
-          <DocumentViewer page={currentPage} totalPages={totalPages} />
+          <DocumentViewer page={currentPage} totalPages={totalPages} document={document} />
 
           {/* Navigation */}
           <div className="
@@ -253,7 +259,7 @@ export const FreeReadingMode: React.FC<FreeReadingModeProps> = ({ document, onBa
       </div>
 
       {/* ChatBot */}
-      <ChatBot messages={chatMessages} onSendMessage={handleSendMessage} />
+      <ChatBot messages={chatMessages} onSendMessage={handleSendMessage} isLoading={isAILoading} />
     </div>
   );
 };

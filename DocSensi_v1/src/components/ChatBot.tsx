@@ -5,28 +5,25 @@ import { ChatMessage } from '../types';
 interface ChatBotProps {
   messages: ChatMessage[];
   onSendMessage: (message: string) => void;
+  isLoading?: boolean;
 }
 
-export const ChatBot: React.FC<ChatBotProps> = ({ messages, onSendMessage }) => {
+export const ChatBot: React.FC<ChatBotProps> = ({ messages, onSendMessage, isLoading = false }) => {
   const [input, setInput] = useState('');
   const [isMinimized, setIsMinimized] = useState(false);
-  const [isTyping, setIsTyping] = useState(false);
   const messagesEndRef = useRef<HTMLDivElement>(null);
 
   const scrollToBottom = () => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
   };
 
-  useEffect(scrollToBottom, [messages]);
+  useEffect(scrollToBottom, [messages, isLoading]);
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
-    if (input.trim()) {
+    if (input.trim() && !isLoading) {
       onSendMessage(input);
       setInput('');
-      setIsTyping(true);
-      // Simulate AI typing delay
-      setTimeout(() => setIsTyping(false), 2000);
     }
   };
 
@@ -126,8 +123,8 @@ export const ChatBot: React.FC<ChatBotProps> = ({ messages, onSendMessage }) => 
                   </div>
                 ))}
                 
-                {/* Typing indicator */}
-                {isTyping && (
+                {/* Typing indicator — shown while waiting for real AI response */}
+                {isLoading && (
                   <div className="flex justify-start animate-slide-up">
                     <div className="bg-white/10 dark:bg-dark-700/10 border border-white/20 dark:border-dark-600/20 p-4 rounded-2xl backdrop-blur-sm">
                       <div className="flex space-x-1">
@@ -150,7 +147,8 @@ export const ChatBot: React.FC<ChatBotProps> = ({ messages, onSendMessage }) => 
                 type="text"
                 value={input}
                 onChange={(e) => setInput(e.target.value)}
-                placeholder="Ask me anything..."
+                placeholder={isLoading ? 'Waiting for response...' : 'Ask me anything...'}
+                disabled={isLoading}
                 className="
                   flex-1 px-4 py-3 bg-white/10 dark:bg-dark-700/10 backdrop-blur-sm
                   border border-white/20 dark:border-dark-600/20 rounded-2xl
@@ -161,7 +159,7 @@ export const ChatBot: React.FC<ChatBotProps> = ({ messages, onSendMessage }) => 
               />
               <button
                 type="submit"
-                disabled={!input.trim()}
+                disabled={!input.trim() || isLoading}
                 className="
                   relative group/btn overflow-hidden
                   bg-gradient-purple hover:shadow-glow text-white p-3 rounded-2xl

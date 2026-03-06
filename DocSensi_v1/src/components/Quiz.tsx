@@ -38,13 +38,14 @@ export const Quiz: React.FC<QuizProps> = ({ questions, onQuizComplete, onQuizRes
 
   const currentQuestion = questions[currentQuestionIndex];
   const isAnswerCorrect = selectedAnswer === currentQuestion.correctAnswer;
-  const progressPercentage = (correctAnswers / 3) * 100;
+  const requiredCorrect = questions.length;
+  const progressPercentage = (correctAnswers / requiredCorrect) * 100;
 
   useEffect(() => {
-    if (correctAnswers >= 3) {
+    if (correctAnswers >= requiredCorrect) {
       setTimeout(() => onQuizComplete(), 1000);
     }
-  }, [correctAnswers, onQuizComplete]);
+  }, [correctAnswers, requiredCorrect, onQuizComplete]);
 
   const handleAnswerSubmit = () => {
     if (selectedAnswer === null) return;
@@ -80,7 +81,7 @@ export const Quiz: React.FC<QuizProps> = ({ questions, onQuizComplete, onQuizRes
     onQuizReset();
   };
 
-  if (correctAnswers >= 3) {
+  if (correctAnswers >= requiredCorrect) {
     return (
       <div className="
         bg-white/10 dark:bg-dark-800/10 backdrop-blur-xl rounded-3xl p-8
@@ -99,7 +100,7 @@ export const Quiz: React.FC<QuizProps> = ({ questions, onQuizComplete, onQuizRes
               Outstanding Work!
             </h3>
             <p className="text-white/80 dark:text-white/70 text-lg leading-relaxed">
-              You've successfully answered {correctAnswers} questions correctly. 
+              You answered all {requiredCorrect} question{requiredCorrect !== 1 ? 's' : ''} correctly.
               You're ready to advance to the next page!
             </p>
           </div>
@@ -136,7 +137,7 @@ export const Quiz: React.FC<QuizProps> = ({ questions, onQuizComplete, onQuizRes
                 Knowledge Check
               </h3>
               <p className="text-white/60 dark:text-white/50">
-                Answer 3 questions correctly to continue
+                Answer {requiredCorrect} question{requiredCorrect !== 1 ? 's' : ''} correctly to continue
               </p>
             </div>
           </div>
@@ -158,7 +159,7 @@ export const Quiz: React.FC<QuizProps> = ({ questions, onQuizComplete, onQuizRes
         <div className="space-y-3">
           <div className="flex items-center justify-between text-sm">
             <span className="text-white/70 dark:text-white/60">Progress</span>
-            <span className="text-white font-medium">{correctAnswers}/3 correct</span>
+            <span className="text-white font-medium">{correctAnswers}/{requiredCorrect} correct</span>
           </div>
           <div className="relative w-full h-3 bg-white/10 dark:bg-dark-700/10 rounded-full overflow-hidden">
             <div 

@@ -167,6 +167,19 @@ export const LearningMode: React.FC<LearningModeProps> = ({ document, onBackToHo
           setCurrentPageIndex(currentPageIndex + 1);
           setPageValid(false);
         }
+      } else if (data.valid === false && !data.error) {
+        // Non-content page (title, table of contents, acknowledgment, index, etc.)
+        // Auto-advance past it — no quiz needed for pages with no learning content
+        const newCompletedPages = new Set(completedPages);
+        newCompletedPages.add(currentPageIndex);
+        setCompletedPages(newCompletedPages);
+        setShowQuiz(false);
+        setQuizQuestions(null);
+        setPageValid(true);
+        if (quizAutoAdvance && currentPageIndex < totalPages - 1) {
+          setCurrentPageIndex(currentPageIndex + 1);
+          setPageValid(false);
+        }
       } else if (data.error) {
         // Handle LLM output parsing failure with a user-friendly message
         if (typeof data.error === 'string' && data.error.includes('OUTPUT_PARSING_FAILURE')) {
@@ -255,19 +268,22 @@ export const LearningMode: React.FC<LearningModeProps> = ({ document, onBackToHo
       </div>
 
       <div className="relative z-10 max-w-7xl mx-auto px-6 py-8">
-        {/* Auto-advance switch */}
+        {/* Auto-advance toggle */}
         <div className="flex items-center mb-4">
-          <label className="flex items-center cursor-pointer select-none">
-            <input
-              type="checkbox"
-              checked={quizAutoAdvance}
-              onChange={() => setQuizAutoAdvance(v => !v)}
-              className="form-checkbox h-5 w-5 text-blue-600"
+          <button
+            type="button"
+            role="switch"
+            aria-checked={quizAutoAdvance}
+            onClick={() => setQuizAutoAdvance(v => !v)}
+            className={`relative inline-flex h-6 w-11 flex-shrink-0 items-center rounded-full transition-colors duration-200 focus:outline-none focus:ring-2 focus:ring-blue-400/50 ${quizAutoAdvance ? 'bg-blue-500' : 'bg-white/20'}`}
+          >
+            <span
+              className={`inline-block h-4 w-4 transform rounded-full bg-white shadow transition-transform duration-200 ${quizAutoAdvance ? 'translate-x-6' : 'translate-x-1'}`}
             />
-            <span className="ml-2 text-white/80 dark:text-white/70 text-sm">
-              Auto-advance on non-quizable page
-            </span>
-          </label>
+          </button>
+          <span className="ml-3 text-white/80 dark:text-white/70 text-sm select-none">
+            Auto-advance past non-content pages (title, TOC, acknowledgments, index)
+          </span>
         </div>
         <div className="grid xl:grid-cols-10 gap-8">
           {/* Document Viewer - 70% */}

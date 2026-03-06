@@ -1,5 +1,5 @@
 
-import React, { useState } from 'react';
+import React, { useState, useRef, useEffect } from 'react';
 import { Page as PageType, Document as DocType } from '../types';
 import { CheckCircle, BookOpen } from 'lucide-react';
 import { Document as PdfDocument, Page as PdfPage } from 'react-pdf';
@@ -21,6 +21,23 @@ export const DocumentViewer: React.FC<DocumentViewerProps> = ({
 }) => {
   // Toggle state: true = show rendered (PDF), false = show extracted text
   const [showRendered, setShowRendered] = useState(true);
+
+  // Measure container width so the PDF page fills it responsively
+  const pdfContainerRef = useRef<HTMLDivElement>(null);
+  const [pdfWidth, setPdfWidth] = useState(700);
+
+  useEffect(() => {
+    const updateWidth = () => {
+      if (pdfContainerRef.current) {
+        const w = pdfContainerRef.current.clientWidth;
+        if (w > 0) setPdfWidth(w - 32); // 32px for inner padding
+      }
+    };
+    updateWidth();
+    const observer = new ResizeObserver(updateWidth);
+    if (pdfContainerRef.current) observer.observe(pdfContainerRef.current);
+    return () => observer.disconnect();
+  }, []);
 
   // If fileUrl is present, render the file (PDF/Word)
   const fileUrl = document?.fileUrl;
@@ -81,7 +98,11 @@ export const DocumentViewer: React.FC<DocumentViewerProps> = ({
           {/* Toggle logic: for PDFs, show either rendered or extracted text. For Word, show link. For others, show text. */}
           {fileUrl && docType === 'PDF' ? (
             showRendered ? (
-              <div className="pdf-viewer-container" style={{ width: '100%', height: '600px' }}>
+              <div
+                ref={pdfContainerRef}
+                className="pdf-viewer-container"
+                style={{ width: '100%', maxHeight: '75vh', overflowY: 'auto', overflowX: 'auto' }}
+              >
                 <PdfDocument
                   file={fileUrl}
                   onLoadSuccess={({ numPages }) => {
@@ -92,7 +113,7 @@ export const DocumentViewer: React.FC<DocumentViewerProps> = ({
                 >
                   <PdfPage
                     pageNumber={page.number}
-                    width={700}
+                    width={pdfWidth}
                   />
                 </PdfDocument>
               </div>
@@ -113,9 +134,12 @@ export const DocumentViewer: React.FC<DocumentViewerProps> = ({
               </a>
             </div>
           ) : (
-            <p className="text-white/90 dark:text-white/80 leading-relaxed text-lg font-light">
+            <div
+              className="whitespace-pre-wrap text-white/90 dark:text-white/80 leading-relaxed text-base font-light"
+              style={{ maxHeight: '75vh', overflowY: 'auto' }}
+            >
               {page.content}
-            </p>
+            </div>
           )}
         </div>
         {/* Decorative elements */}
