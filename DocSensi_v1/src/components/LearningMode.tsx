@@ -494,6 +494,7 @@ export const LearningMode: React.FC<LearningModeProps> = ({ document, onBackToHo
                     </button>
                   </div>
                 )}
+              </div>
             )}
           </div>
         </div>
