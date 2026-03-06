@@ -2,6 +2,7 @@
 from logger import get_logger
 import json
 from langchain_core.output_parsers import JsonOutputParser
+from langchain_core.messages import SystemMessage, HumanMessage
 import os
 from dotenv import load_dotenv
 from langchain_openai import ChatOpenAI
@@ -104,3 +105,45 @@ def mcq_quiz_generator(page_content: str):
     except Exception as e:
         ai_logger.error('Failed to run LLM chain for quiz: %s', e)
         return {"error": f"Failed to run LLM chain for quiz: {e}"}
+
+
+def chat_with_document(message: str, context: str, document_name: str, history: list) -> str:
+    """
+    Chat with the AI about the current page of a document.
+    Uses conversation history for context continuity.
+    """
+    ai_logger.info('chat_with_document called with message: %s', message[:100])
+
+    # Build conversation history string (last 6 messages to stay within token limits)
+    history_str = ""
+    for msg in history[-6:]:
+        role = "User" if msg.get("sender") == "user" else "Assistant"
+        text = msg.get("text", "").strip()
+        if text:
+            history_str += f"{role}: {text}\n"
+
+    system_content = (
+        "You are an intelligent AI learning assistant helping a user understand a document. "
+        "Answer questions based on the document page content provided below. "
+        "Be concise, educational, and encouraging. "
+        "If the user asks about something not present in the page content, acknowledge that and "
+        "answer from your general knowledge while noting the distinction. "
+        "Keep responses to 2-4 sentences unless a detailed explanation is genuinely needed.\n\n"
+        f"Document name: {document_name}\n\n"
+        f"Current page content:\n{context[:3000]}"
+    )
+
+    user_content = (
+        f"Previous conversation:\n{history_str}\nCurrent question: {message}"
+        if history_str
+        else message
+    )
+
+    try:
+        messages_list = [SystemMessage(content=system_content), HumanMessage(content=user_content)]
+        response = llm.invoke(messages_list)
+        ai_logger.info('Chat response generated successfully')
+        return response.content
+    except Exception as e:
+        ai_logger.error('chat_with_document failed: %s', e)
+        return "I'm sorry, I encountered an error generating a response. Please try again."

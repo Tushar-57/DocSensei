@@ -3,8 +3,8 @@ flask-cors
 werkzeug
 langchain
 python-dotenv
-python-dotenv
 langchain-openai
 langchain-core
 PyPDF2
-gunicorn==20.1.0
+setuptools
+gunicorn==23.0.0
