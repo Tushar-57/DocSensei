@@ -57,7 +57,7 @@ const InfoFooter: React.FC = () => {
   );
 };
 
-import { Upload, FileText, File, Sparkles } from 'lucide-react';
+import { Upload, FileText, File, Sparkles, BookOpen } from 'lucide-react';
 import { Document } from '../types';
 import { ThemeToggle } from './ThemeToggle';
 
@@ -68,6 +68,7 @@ interface DocumentUploadProps {
 export const DocumentUpload: React.FC<DocumentUploadProps> = ({ onDocumentUploaded }) => {
   const [isDragOver, setIsDragOver] = useState(false);
   const [isUploading, setIsUploading] = useState(false);
+  const [isSampleLoading, setIsSampleLoading] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
 
@@ -145,6 +146,36 @@ export const DocumentUpload: React.FC<DocumentUploadProps> = ({ onDocumentUpload
   };
 
   // generateMockPages removed; now using real extracted content from backend
+
+  const handleLoadSample = async () => {
+    setIsSampleLoading(true);
+    try {
+      const res = await fetch(`${import.meta.env.VITE_BACKEND_URL}/sample`);
+      if (!res.ok) throw new Error('Failed to load sample');
+      const data = await res.json();
+      const extractedPages: string[] = Array.isArray(data.pages) ? data.pages : [];
+      const pages = extractedPages.map((content, idx) => ({
+        id: `page-${idx + 1}`,
+        number: idx + 1,
+        content,
+        completed: false,
+      }));
+      const sampleDocument: Document = {
+        id: Math.random().toString(36).substr(2, 9),
+        name: data.name || 'Python Basics Tutorial',
+        type: data.type || 'PDF',
+        content: extractedPages.join('\n\n'),
+        pages,
+        uploadedAt: new Date(),
+        // no fileUrl — renders as text, which is expected for the sample
+      };
+      onDocumentUploaded(sampleDocument);
+    } catch {
+      alert('Failed to load sample document. Please check the backend connection.');
+    } finally {
+      setIsSampleLoading(false);
+    }
+  };
 
   const handleDragOver = (e: React.DragEvent) => {
     e.preventDefault();
@@ -278,6 +309,43 @@ export const DocumentUpload: React.FC<DocumentUploadProps> = ({ onDocumentUpload
                       <span className="relative flex items-center justify-center">
                         <Upload className="w-5 h-5 mr-3 group-hover/btn:rotate-12 transition-transform duration-300" />
                         Choose File
+                      </span>
+                    </button>
+
+                    {/* Divider */}
+                    <div className="flex items-center gap-4">
+                      <div className="flex-1 h-px bg-white/20"></div>
+                      <span className="text-white/50 text-sm font-medium">or</span>
+                      <div className="flex-1 h-px bg-white/20"></div>
+                    </div>
+
+                    {/* Sample PDF Button */}
+                    <button
+                      onClick={handleLoadSample}
+                      disabled={isSampleLoading}
+                      className="
+                        relative group/btn overflow-hidden
+                        bg-white/10 hover:bg-white/20 text-white px-8 py-4 rounded-2xl
+                        font-semibold text-lg transition-all duration-300
+                        border border-white/30 hover:border-white/50
+                        transform hover:scale-105 hover:-translate-y-1
+                        focus:outline-none focus:ring-4 focus:ring-white/20
+                        shadow-lg hover:shadow-xl
+                        disabled:opacity-60 disabled:cursor-not-allowed disabled:transform-none
+                      "
+                    >
+                      <span className="relative flex items-center justify-center gap-3">
+                        {isSampleLoading ? (
+                          <>
+                            <div className="w-5 h-5 border-2 border-white/40 border-t-white rounded-full animate-spin"></div>
+                            Loading Sample...
+                          </>
+                        ) : (
+                          <>
+                            <BookOpen className="w-5 h-5 group-hover/btn:scale-110 transition-transform duration-300" />
+                            Try Sample — Python Tutorial
+                          </>
+                        )}
                       </span>
                     </button>
 
