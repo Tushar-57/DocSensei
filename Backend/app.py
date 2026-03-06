@@ -433,8 +433,25 @@ def generate_quiz():
             page_content = pages[0]
         else:
             page_content = pages[idx]
+
+        # Auto-skip pages that are too short to quiz (< 50 words)
+        # Saves an LLM call and avoids forcing quizzes on section breaks / cover pages
+        word_count = len(page_content.split()) if page_content else 0
+        if word_count < 50:
+            ai_logger.info(
+                'Page %s has only %d words — auto-skipping quiz (thin page)',
+                page_number, word_count
+            )
+            return jsonify({
+                'valid': False,
+                'result': 'Not a quizable page',
+                'validation_explanation':
+                    f'This page contains only {word_count} word(s). '
+                    'It is likely a section break, cover, or short intro and does not '
+                    'need a quiz.'
+            })
+
         ai_logger.info('Generating quiz for document %s, page %s', document_id, page_number)
-        print("\n--- Document Page Content for Quiz Generation ---\n", page_content, "\n--- END ---\n")
         quiz = mcq_quiz_generator(page_content)
         ai_logger.info('Quiz generation complete')
         return jsonify(quiz)

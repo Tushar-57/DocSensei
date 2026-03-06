@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { ChevronLeft, ChevronRight, BookOpen, Home, Brain, Target } from 'lucide-react';
+import { ChevronLeft, ChevronRight, BookOpen, Home, Brain, Target, BookMarked } from 'lucide-react';
 import { Document, QuizQuestion } from '../types';
 import { DocumentViewer } from './DocumentViewer';
 import { Quiz } from './Quiz';
@@ -13,6 +13,8 @@ interface LearningModeProps {
 export const LearningMode: React.FC<LearningModeProps> = ({ document, onBackToHome }) => {
   const [currentPageIndex, setCurrentPageIndex] = useState(0);
   const [completedPages, setCompletedPages] = useState<Set<number>>(new Set());
+  // Pages the user marked as read manually (no quiz) — shown with a different badge
+  const [skippedPages, setSkippedPages] = useState<Set<number>>(new Set());
   const [showQuiz, setShowQuiz] = useState(false);
   const [loadingQuiz, setLoadingQuiz] = useState(false);
   const [quizQuestions, setQuizQuestions] = useState<QuizQuestion[] | null>(null);
@@ -99,6 +101,19 @@ export const LearningMode: React.FC<LearningModeProps> = ({ document, onBackToHo
     newCompletedPages.delete(currentPageIndex);
     setCompletedPages(newCompletedPages);
     setPageValid(false);
+  };
+
+  // Mark as Read — user-initiated skip, tracked separately with a different badge
+  const handleMarkAsRead = () => {
+    const newCompleted = new Set(completedPages);
+    newCompleted.add(currentPageIndex);
+    setCompletedPages(newCompleted);
+    const newSkipped = new Set(skippedPages);
+    newSkipped.add(currentPageIndex);
+    setSkippedPages(newSkipped);
+    setShowQuiz(false);
+    setQuizQuestions(null);
+    setPageValid(true);
   };
 
   const canNavigateToNext = () => {
@@ -331,13 +346,20 @@ export const LearningMode: React.FC<LearningModeProps> = ({ document, onBackToHo
                             setShowQuiz(false);
                           }
                         }}
+                        title={
+                          skippedPages.has(i) ? 'Marked as read (skipped quiz)'
+                          : completedPages.has(i) ? 'Completed'
+                          : `Page ${i + 1}`
+                        }
                         className={`
                           w-3 h-3 rounded-full transition-all duration-300 transform hover:scale-125
                           ${i === currentPageIndex 
                             ? 'bg-blue-400 shadow-glow-blue' 
-                            : completedPages.has(i)
-                              ? 'bg-green-400 shadow-glow cursor-pointer'
-                              : 'bg-white/30'
+                            : skippedPages.has(i)
+                              ? 'bg-white/50 cursor-pointer'
+                              : completedPages.has(i)
+                                ? 'bg-green-400 shadow-glow cursor-pointer'
+                                : 'bg-white/30'
                           }
                           ${(i === currentPageIndex || completedPages.has(i)) ? 'cursor-pointer' : 'cursor-not-allowed opacity-50'}
                         `}
@@ -391,47 +413,87 @@ export const LearningMode: React.FC<LearningModeProps> = ({ document, onBackToHo
                 text-center animate-scale-in
                 max-w-xs mx-auto flex flex-col items-center justify-center min-h-[340px]
               ">
-                <div className="space-y-6 w-full">
-                  <div className="relative">
-                    <BookOpen className="w-16 h-16 text-purple-400 mx-auto animate-float" />
-                    <div className="absolute inset-0 w-16 h-16 bg-purple-400/30 rounded-full blur-xl mx-auto"></div>
-                  </div>
-                  <div className="space-y-3">
-                    <h3 className="text-2xl font-bold text-white dark:text-white font-geist">
-                      Ready for a Knowledge Check?
-                    </h3>
-                    <p className="text-white/80 dark:text-white/70 leading-relaxed">
-                      Test your understanding of this page before moving on!
+                {skippedPages.has(currentPageIndex) ? (
+                  // Already marked as read — show a neutral badge
+                  <div className="space-y-4">
+                    <div className="relative">
+                      <BookMarked className="w-14 h-14 text-white/50 mx-auto" />
+                    </div>
+                    <p className="text-white/60 text-sm leading-relaxed">
+                      You marked this page as read without a quiz.
                     </p>
+                    <button
+                      onClick={() => {
+                        // Allow retaking quiz
+                        const newSkipped = new Set(skippedPages);
+                        newSkipped.delete(currentPageIndex);
+                        setSkippedPages(newSkipped);
+                        const newCompleted = new Set(completedPages);
+                        newCompleted.delete(currentPageIndex);
+                        setCompletedPages(newCompleted);
+                        setPageValid(false);
+                      }}
+                      className="text-white/50 hover:text-white/80 text-sm underline underline-offset-2 transition-colors duration-200"
+                    >
+                      Take the quiz instead
+                    </button>
                   </div>
-                  {quizError && (
-                    <div className="text-red-400 text-sm font-medium">{quizError}</div>
-                  )}
-                  <button
-                    onClick={fetchQuizQuestions}
-                    disabled={loadingQuiz}
-                    className="
-                      relative group/btn overflow-hidden
-                      bg-gradient-to-r from-yellow-400 via-pink-500 to-purple-600
-                      text-white px-8 py-4 rounded-2xl font-semibold text-lg
-                      transition-all duration-300 transform hover:scale-105 hover:-translate-y-1
-                      focus:outline-none focus:ring-4 focus:ring-purple-300/50
-                      shadow-xl hover:shadow-2xl
-                      glitter-btn
-                      disabled:opacity-60 disabled:cursor-not-allowed
-                    "
-                    style={{
-                      boxShadow: '0 0 16px 2px #f472b6, 0 0 32px 4px #a78bfa',
-                      backgroundSize: '200% 200%',
-                      animation: loadingQuiz ? 'pulse 1s infinite' : 'glitter 2s infinite',
-                    }}
-                  >
-                    <span className="relative flex items-center justify-center">
-                      {loadingQuiz ? 'Loading...' : '✨ Start Quiz'}
-                    </span>
-                  </button>
-                </div>
-              </div>
+                ) : (
+                  <div className="space-y-6 w-full">
+                    <div className="relative">
+                      <BookOpen className="w-16 h-16 text-purple-400 mx-auto animate-float" />
+                      <div className="absolute inset-0 w-16 h-16 bg-purple-400/30 rounded-full blur-xl mx-auto"></div>
+                    </div>
+                    <div className="space-y-3">
+                      <h3 className="text-2xl font-bold text-white dark:text-white font-geist">
+                        Ready for a Knowledge Check?
+                      </h3>
+                      <p className="text-white/80 dark:text-white/70 leading-relaxed">
+                        Test your understanding of this page before moving on!
+                      </p>
+                    </div>
+                    {quizError && (
+                      <div className="text-red-400 text-sm font-medium">{quizError}</div>
+                    )}
+                    <button
+                      onClick={fetchQuizQuestions}
+                      disabled={loadingQuiz}
+                      className="
+                        relative group/btn overflow-hidden
+                        bg-gradient-to-r from-yellow-400 via-pink-500 to-purple-600
+                        text-white px-8 py-4 rounded-2xl font-semibold text-lg
+                        transition-all duration-300 transform hover:scale-105 hover:-translate-y-1
+                        focus:outline-none focus:ring-4 focus:ring-purple-300/50
+                        shadow-xl hover:shadow-2xl
+                        glitter-btn
+                        disabled:opacity-60 disabled:cursor-not-allowed
+                      "
+                      style={{
+                        boxShadow: '0 0 16px 2px #f472b6, 0 0 32px 4px #a78bfa',
+                        backgroundSize: '200% 200%',
+                        animation: loadingQuiz ? 'pulse 1s infinite' : 'glitter 2s infinite',
+                      }}
+                    >
+                      <span className="relative flex items-center justify-center">
+                        {loadingQuiz ? 'Loading...' : '✨ Start Quiz'}
+                      </span>
+                    </button>
+
+                    {/* Mark as Read — subtle escape hatch, de-emphasised intentionally */}
+                    <button
+                      onClick={handleMarkAsRead}
+                      className="
+                        flex items-center justify-center gap-1.5 mx-auto
+                        text-white/40 hover:text-white/70 text-sm
+                        transition-colors duration-200
+                      "
+                      title="Skip the quiz and mark this page as read. Progress will show this page differently from quizzed pages."
+                    >
+                      <BookMarked className="w-3.5 h-3.5" />
+                      Mark as read & skip quiz
+                    </button>
+                  </div>
+                )}
             )}
           </div>
         </div>
