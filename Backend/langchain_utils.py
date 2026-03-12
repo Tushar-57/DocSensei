@@ -11,6 +11,9 @@ from langchain_core.prompts import ChatPromptTemplate
 import prompt_library
 
 import fitz  # PyMuPDF
+from PIL import Image
+import pytesseract
+import io
 
 
 load_dotenv()
@@ -29,16 +32,31 @@ if os.environ.get("LANGSMITH_TRACING", "false").lower() == "true":
         ai_logger.error("LangSmith test trace failed: %s", e)
 
 
+def _ocr_page(page: fitz.Page) -> str:
+    """Render a PDF page to image and OCR it with tesseract."""
+    mat = fitz.Matrix(2, 2)  # 2x scale for better OCR accuracy
+    pix = page.get_pixmap(matrix=mat)
+    img = Image.open(io.BytesIO(pix.tobytes("png")))
+    return pytesseract.image_to_string(img)
+
+
 def extract_text_from_pdf(file_path: str) -> list:
     """
-    Extract text from a PDF or text file using PyMuPDF.
+    Extract text from a PDF using PyMuPDF.
+    Falls back to tesseract OCR for image-only (scanned) pages.
     Returns a list of page texts.
     """
     ai_logger.info(f'Starting extraction for {file_path}')
     if file_path.lower().endswith('.pdf'):
         try:
             doc = fitz.open(file_path)
-            pages = [page.get_text() for page in doc]
+            pages = []
+            for page in doc:
+                text = page.get_text().strip()
+                if not text:
+                    ai_logger.info('Page %d has no text layer — running OCR', page.number + 1)
+                    text = _ocr_page(page)
+                pages.append(text)
             doc.close()
             ai_logger.info('Extracted %d pages from PDF: %s', len(pages), file_path)
             return pages
