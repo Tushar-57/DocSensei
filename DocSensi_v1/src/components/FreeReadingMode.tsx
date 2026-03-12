@@ -22,10 +22,33 @@ export const FreeReadingMode: React.FC<FreeReadingModeProps> = ({ document, onBa
       timestamp: new Date(),
     }
   ]);
+  // Vision OCR overrides: page index → extracted text (for scanned/image pages)
+  const [contentOverrides, setContentOverrides] = useState<Record<number, string>>({});
 
-  const currentPage = document.pages[currentPageIndex];
-  const totalPages = document.pages.length;
+  const rawPages = document.pages;
+  const pages = rawPages.map((p, i) =>
+    contentOverrides[i] ? { ...p, content: contentOverrides[i] } : p
+  );
+  const currentPage = pages[currentPageIndex];
+  const totalPages = pages.length;
   const readingProgress = ((currentPageIndex + 1) / totalPages) * 100;
+
+  // When navigating to a page with no text layer, fetch it via Vision API
+  useEffect(() => {
+    const page = rawPages[currentPageIndex];
+    if (!page || page.content.trim() || contentOverrides[currentPageIndex] !== undefined) return;
+    if (!document.fileUrl) return;
+    fetch(`${import.meta.env.VITE_BACKEND_URL}/extract-page`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ fileUrl: document.fileUrl, pageNumber: page.number }),
+    })
+      .then(r => r.json())
+      .then(data => {
+        if (data.text) setContentOverrides(prev => ({ ...prev, [currentPageIndex]: data.text }));
+      })
+      .catch(() => {});
+  }, [currentPageIndex]);
 
   const handleSendMessage = async (message: string) => {
     const userMessage: ChatMessage = {
@@ -138,7 +161,7 @@ export const FreeReadingMode: React.FC<FreeReadingModeProps> = ({ document, onBa
 
               {/* Page Summary Button */}
               <PageSummary
-                pages={document.pages}
+                pages={pages}
                 pageNumber={currentPage.number}
               />
               

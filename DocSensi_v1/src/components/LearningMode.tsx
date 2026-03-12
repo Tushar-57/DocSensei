@@ -22,11 +22,34 @@ export const LearningMode: React.FC<LearningModeProps> = ({ document, onBackToHo
   const [quizError, setQuizError] = useState<string | null>(null);
   const [quizAutoAdvance, setQuizAutoAdvance] = useState(true); // Switch for auto-advance
   const [pageValid, setPageValid] = useState(false); // Track if current page is valid for navigation
+  // Vision OCR overrides: page index → extracted text (for scanned/image pages)
+  const [contentOverrides, setContentOverrides] = useState<Record<number, string>>({});
 
-  const pages = Array.isArray(document.pages) ? document.pages : [];
+  const rawPages = Array.isArray(document.pages) ? document.pages : [];
+  // Merge Vision OCR results into pages so all API calls use the resolved content
+  const pages = rawPages.map((p, i) =>
+    contentOverrides[i] ? { ...p, content: contentOverrides[i] } : p
+  );
   const currentPage = pages[currentPageIndex] || { content: '', number: currentPageIndex + 1 };
   const totalPages = pages.length;
   const overallProgress = totalPages > 0 ? (completedPages.size / totalPages) * 100 : 0;
+
+  // When navigating to a page with no text layer, fetch it via Vision API (one call per page, not all at once)
+  useEffect(() => {
+    const page = rawPages[currentPageIndex];
+    if (!page || page.content.trim() || contentOverrides[currentPageIndex] !== undefined) return;
+    if (!document.fileUrl) return;
+    fetch(`${import.meta.env.VITE_BACKEND_URL}/extract-page`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ fileUrl: document.fileUrl, pageNumber: page.number }),
+    })
+      .then(r => r.json())
+      .then(data => {
+        if (data.text) setContentOverrides(prev => ({ ...prev, [currentPageIndex]: data.text }));
+      })
+      .catch(() => {/* Vision failed — page stays empty, quiz will skip it */});
+  }, [currentPageIndex]);
 
   // Generate mock quiz questions for the current page
   const generateQuizQuestions = (): QuizQuestion[] => {
