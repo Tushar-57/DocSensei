@@ -1,3 +1,4 @@
+--extra-index-url https://download.pytorch.org/whl/cpu
 Flask
 flask-cors
 werkzeug
@@ -5,6 +6,7 @@ langchain
 python-dotenv
 langchain-openai
 langchain-core
+torch==2.6.0+cpu
 docling==2.78.0
 setuptools
 gunicorn==23.0.0
