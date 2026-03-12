@@ -5,6 +5,6 @@ langchain
 python-dotenv
 langchain-openai
 langchain-core
-PyPDF2
+docling>=2.0.0,<3.0.0
 setuptools
 gunicorn==23.0.0
