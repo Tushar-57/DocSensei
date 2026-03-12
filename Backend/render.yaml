@@ -1,10 +1,9 @@
 services:
   - type: web
     name: docsensei-backend
-    runtime: python
+    runtime: docker
     rootDir: Backend
-    buildCommand: sudo apt-get install -y tesseract-ocr && pip install -r requirements.txt
-    startCommand: gunicorn --bind 0.0.0.0:$PORT app:app
+    dockerfilePath: ./Dockerfile
     envVars:
       - key: PYTHON_VERSION
         value: "3.11.12"
