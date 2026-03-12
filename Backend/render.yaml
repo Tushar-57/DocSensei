@@ -1,9 +1,7 @@
 services:
   - type: web
     name: docsensei-backend
-    runtime: docker
+    runtime: python
     rootDir: Backend
-    dockerfilePath: ./Dockerfile
-    envVars:
-      - key: PYTHON_VERSION
-        value: "3.11.12"
+    buildCommand: pip install -r requirements.txt
+    startCommand: gunicorn --bind 0.0.0.0:$PORT app:app

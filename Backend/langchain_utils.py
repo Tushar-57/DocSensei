@@ -10,10 +10,9 @@ from langchain_openai import ChatOpenAI
 from langchain_core.prompts import ChatPromptTemplate
 import prompt_library
 
+import base64
 import fitz  # PyMuPDF
-from PIL import Image
-import pytesseract
-import io
+from openai import OpenAI
 
 
 load_dotenv()
@@ -32,31 +31,52 @@ if os.environ.get("LANGSMITH_TRACING", "false").lower() == "true":
         ai_logger.error("LangSmith test trace failed: %s", e)
 
 
-def _ocr_page(page: fitz.Page) -> str:
-    """Render a PDF page to image and OCR it with tesseract."""
-    mat = fitz.Matrix(2, 2)  # 2x scale for better OCR accuracy
-    pix = page.get_pixmap(matrix=mat)
-    img = Image.open(io.BytesIO(pix.tobytes("png")))
-    return pytesseract.image_to_string(img)
+_openai_client = OpenAI()
+
+
+def _ocr_page_vision(page: fitz.Page) -> str:
+    """Render a PDF page to PNG and extract text via GPT-4o-mini Vision."""
+    pix = page.get_pixmap(matrix=fitz.Matrix(2, 2))
+    b64 = base64.b64encode(pix.tobytes("png")).decode()
+    response = _openai_client.chat.completions.create(
+        model="gpt-4o-mini",
+        messages=[{
+            "role": "user",
+            "content": [
+                {"type": "text", "text": "Extract all text from this image exactly as it appears. Return only the extracted text, no commentary."},
+                {"type": "image_url", "image_url": {"url": f"data:image/png;base64,{b64}", "detail": "high"}}
+            ]
+        }],
+        max_tokens=2000
+    )
+    return response.choices[0].message.content
+
+
+@lru_cache(maxsize=512)
+def extract_page_vision(file_path: str, page_number: int) -> str:
+    """
+    Extract text from a single image-only page via GPT-4o-mini Vision.
+    Cached so each page is only ever Vision-processed once per server lifetime.
+    """
+    ai_logger.info('Vision OCR for %s page %d', file_path, page_number)
+    doc = fitz.open(file_path)
+    page = doc[page_number - 1]
+    text = _ocr_page_vision(page)
+    doc.close()
+    return text
 
 
 def extract_text_from_pdf(file_path: str) -> list:
     """
-    Extract text from a PDF using PyMuPDF.
-    Falls back to tesseract OCR for image-only (scanned) pages.
+    Extract text from a PDF using PyMuPDF (text layer only, no Vision).
+    Image-only pages return empty string — call extract_page_vision() lazily for those.
     Returns a list of page texts.
     """
     ai_logger.info(f'Starting extraction for {file_path}')
     if file_path.lower().endswith('.pdf'):
         try:
             doc = fitz.open(file_path)
-            pages = []
-            for page in doc:
-                text = page.get_text().strip()
-                if not text:
-                    ai_logger.info('Page %d has no text layer — running OCR', page.number + 1)
-                    text = _ocr_page(page)
-                pages.append(text)
+            pages = [page.get_text().strip() for page in doc]
             doc.close()
             ai_logger.info('Extracted %d pages from PDF: %s', len(pages), file_path)
             return pages

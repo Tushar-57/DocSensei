@@ -3,7 +3,7 @@ from flask_cors import CORS
 import os
 from werkzeug.utils import secure_filename
 
-from langchain_utils import extract_text_from_pdf, mcq_quiz_generator, chat_with_document, summarize_page
+from langchain_utils import extract_text_from_pdf, extract_page_vision, mcq_quiz_generator, chat_with_document, summarize_page
 from logger import get_logger
 from dotenv import load_dotenv
 
@@ -485,6 +485,26 @@ def get_sample_document():
         'name': 'Python Basics Tutorial',
         'type': 'PDF',
     })
+
+
+@app.route('/extract-page', methods=['POST'])
+def extract_page():
+    """Vision-OCR a single image page on demand. Response is cached server-side."""
+    data = request.json
+    file_url = data.get('fileUrl')
+    page_number = data.get('pageNumber')
+    if not file_url or not page_number:
+        return jsonify({'error': 'fileUrl and pageNumber required'}), 400
+    filename = file_url.split('/')[-1]
+    file_path = os.path.join(app.config['UPLOAD_FOLDER'], filename)
+    if not os.path.exists(file_path):
+        return jsonify({'error': 'File not found'}), 404
+    try:
+        text = extract_page_vision(file_path, int(page_number))
+        return jsonify({'text': text, 'pageNumber': page_number})
+    except Exception as e:
+        ai_logger.error('Vision extraction failed for page %s: %s', page_number, e)
+        return jsonify({'error': str(e)}), 500
 
 
 @app.route('/summarize', methods=['POST'])
