@@ -5,15 +5,12 @@ from functools import lru_cache
 from langchain_core.output_parsers import JsonOutputParser
 from langchain_core.messages import SystemMessage, HumanMessage
 import os
-import platform
 from dotenv import load_dotenv
 from langchain_openai import ChatOpenAI
 from langchain_core.prompts import ChatPromptTemplate
 import prompt_library
 
-from docling.document_converter import DocumentConverter, PdfFormatOption
-from docling.datamodel.base_models import InputFormat
-from docling.datamodel.pipeline_options import PdfPipelineOptions, EasyOcrOptions
+import fitz  # PyMuPDF
 
 
 load_dotenv()
@@ -32,71 +29,23 @@ if os.environ.get("LANGSMITH_TRACING", "false").lower() == "true":
         ai_logger.error("LangSmith test trace failed: %s", e)
 
 
-def _build_docling_converter(force_ocr: bool = False):
-    """Build a Docling DocumentConverter with OCR enabled on macOS, disabled elsewhere."""
-    pipeline_options = PdfPipelineOptions()
-    pipeline_options.do_table_structure = True
-
-    # Use macOS-native OCR when available; disable OCR on other platforms
-    # (easyocr is not installed on the server and most PDFs have selectable text)
-    if platform.system() == "Darwin":
-        pipeline_options.do_ocr = True
-        try:
-            from docling.datamodel.pipeline_options import OcrMacOptions
-            pipeline_options.ocr_options = OcrMacOptions(force_full_page_ocr=force_ocr)
-        except ImportError:
-            pipeline_options.ocr_options = EasyOcrOptions(force_full_page_ocr=force_ocr)
-    else:
-        pipeline_options.do_ocr = False
-
-    return DocumentConverter(
-        format_options={
-            InputFormat.PDF: PdfFormatOption(pipeline_options=pipeline_options)
-        }
-    )
-
-
 def extract_text_from_pdf(file_path: str) -> list:
     """
-    Extract text from a PDF or text file using Docling (with OCR support for
-    scanned / image-only pages).  Returns a list of page texts.
+    Extract text from a PDF or text file using PyMuPDF.
+    Returns a list of page texts.
     """
     ai_logger.info(f'Starting extraction for {file_path}')
     if file_path.lower().endswith('.pdf'):
         try:
-            # First pass — normal OCR (fast, only OCRs where text layer is missing)
-            converter = _build_docling_converter(force_ocr=False)
-            result = converter.convert(file_path)
-            doc = result.document
-
-            num_pages = doc.num_pages()
-            pages = []
-            for page_no in sorted(doc.pages.keys()):
-                page_text = doc.export_to_text(page_no=page_no)
-                pages.append(page_text)
-
-            # If most pages came back empty, retry with forced full-page OCR
-            non_empty = sum(1 for p in pages if p.strip())
-            if num_pages > 0 and non_empty / num_pages < 0.3:
-                ai_logger.info(
-                    'Only %d/%d pages have text — retrying with full-page OCR',
-                    non_empty, num_pages,
-                )
-                converter = _build_docling_converter(force_ocr=True)
-                result = converter.convert(file_path)
-                doc = result.document
-                pages = [
-                    doc.export_to_text(page_no=pn)
-                    for pn in sorted(doc.pages.keys())
-                ]
-
+            doc = fitz.open(file_path)
+            pages = [page.get_text() for page in doc]
+            doc.close()
             ai_logger.info('Extracted %d pages from PDF: %s', len(pages), file_path)
             return pages
         except Exception as e:
-            ai_logger.error('Error extracting PDF with Docling: %s', e)
+            ai_logger.error('Error extracting PDF: %s', e)
             return [f"[Error extracting PDF: {e}]"]
     else:
-        # Fallback for text files
         try:
             with open(file_path, "r", encoding="utf-8") as f:
                 text = f.read()
