@@ -4,6 +4,7 @@ import { Document, QuizQuestion } from '../types';
 import { DocumentViewer } from './DocumentViewer';
 import { Quiz } from './Quiz';
 import { ThemeToggle } from './ThemeToggle';
+import { PageSummary } from './PageSummary';
 
 interface LearningModeProps {
   document: Document;
@@ -229,24 +230,24 @@ export const LearningMode: React.FC<LearningModeProps> = ({ document, onBackToHo
       <div className="relative z-10 bg-white/10 dark:bg-dark-800/10 backdrop-blur-xl border-b border-white/20 dark:border-dark-700/20">
         <div className="max-w-7xl mx-auto px-6 py-4">
           <div className="flex items-center justify-between">
-            <div className="flex items-center space-x-4">
-              <div className="relative">
-                <div className="bg-gradient-blue rounded-2xl w-12 h-12 flex items-center justify-center">
-                  <Brain className="w-6 h-6 text-white" />
+            <div className="flex items-center space-x-3 sm:space-x-4 min-w-0">
+              <div className="relative flex-shrink-0">
+                <div className="bg-gradient-blue rounded-xl sm:rounded-2xl w-10 h-10 sm:w-12 sm:h-12 flex items-center justify-center">
+                  <Brain className="w-5 h-5 sm:w-6 sm:h-6 text-white" />
                 </div>
-                <div className="absolute inset-0 w-12 h-12 bg-blue-400/30 rounded-2xl blur-xl"></div>
+                <div className="absolute inset-0 w-10 h-10 sm:w-12 sm:h-12 bg-blue-400/30 rounded-xl sm:rounded-2xl blur-xl"></div>
               </div>
-              <div>
-                <h1 className="text-2xl font-bold text-white dark:text-white font-geist">
+              <div className="min-w-0">
+                <h1 className="text-lg sm:text-2xl font-bold text-white dark:text-white font-geist truncate">
                   Structured Learning
                 </h1>
-                <p className="text-white/70 dark:text-white/60 text-sm">
+                <p className="text-white/70 dark:text-white/60 text-xs sm:text-sm truncate">
                   {document.name}
                 </p>
               </div>
             </div>
             
-            <div className="flex items-center space-x-6">
+            <div className="flex items-center space-x-2 sm:space-x-4 md:space-x-6">
               {/* Overall Progress */}
               <div className="hidden md:flex items-center space-x-3">
                 <Target className="w-5 h-5 text-white/70" />
@@ -265,24 +266,46 @@ export const LearningMode: React.FC<LearningModeProps> = ({ document, onBackToHo
                   ></div>
                 </div>
               </div>
+
+              {/* Page Summary Button */}
+              <PageSummary
+                pages={pages}
+                pageNumber={currentPage.number}
+              />
               
               <button
                 onClick={onBackToHome}
                 className="
-                  flex items-center space-x-2 px-4 py-2 rounded-xl
+                  flex items-center space-x-1 sm:space-x-2 px-2 sm:px-4 py-2 rounded-xl
                   text-white/80 hover:text-white hover:bg-white/10
                   font-medium transition-all duration-200 group
                 "
               >
                 <Home className="w-4 h-4 group-hover:scale-110 transition-transform duration-200" />
-                <span>Home</span>
+                <span className="hidden sm:inline">Home</span>
               </button>
             </div>
           </div>
         </div>
       </div>
 
-      <div className="relative z-10 max-w-7xl mx-auto px-6 py-8">
+      <div className="relative z-10 max-w-7xl mx-auto px-4 sm:px-6 py-4 sm:py-8">
+        {/* Mobile progress bar — visible only on small screens */}
+        <div className="md:hidden mb-4 flex items-center gap-3 bg-white/10 backdrop-blur-sm rounded-2xl px-4 py-2.5 border border-white/15">
+          <div className="text-white text-xs font-medium whitespace-nowrap">
+            {completedPages.size}/{totalPages}
+          </div>
+          <div className="flex-1 h-1.5 bg-white/20 rounded-full overflow-hidden">
+            <div 
+              className="h-full bg-gradient-blue rounded-full transition-all duration-500"
+              style={{ width: `${overallProgress}%` }}
+            ></div>
+          </div>
+          <div className="text-white/60 text-xs whitespace-nowrap">
+            {Math.round(overallProgress)}%
+          </div>
+        </div>
+
         {/* Auto-advance toggle */}
         <div className="flex items-center mb-4">
           <button
@@ -314,7 +337,7 @@ export const LearningMode: React.FC<LearningModeProps> = ({ document, onBackToHo
 
             {/* Navigation */}
             <div className="
-              bg-white/10 dark:bg-dark-800/10 backdrop-blur-xl rounded-3xl p-6
+              bg-white/10 dark:bg-dark-800/10 backdrop-blur-xl rounded-2xl sm:rounded-3xl p-4 sm:p-6
               border border-white/20 dark:border-dark-700/20
               shadow-glass dark:shadow-glass-dark
             ">
@@ -323,19 +346,20 @@ export const LearningMode: React.FC<LearningModeProps> = ({ document, onBackToHo
                   onClick={handlePrevPage}
                   disabled={currentPageIndex === 0}
                   className="
-                    flex items-center space-x-2 px-6 py-3 rounded-2xl
+                    flex items-center space-x-1 sm:space-x-2 px-3 sm:px-6 py-2 sm:py-3 rounded-xl sm:rounded-2xl
                     text-white/80 hover:text-white hover:bg-white/10
                     font-medium transition-all duration-200 group
                     disabled:opacity-50 disabled:cursor-not-allowed
                   "
                 >
                   <ChevronLeft className="w-5 h-5 group-hover:-translate-x-1 transition-transform duration-200" />
-                  <span>Previous</span>
+                  <span className="hidden sm:inline">Previous</span>
+                  <span className="sm:hidden text-sm">Prev</span>
                 </button>
 
                 {/* Page Progress */}
-                <div className="text-center space-y-3">
-                  <div className="text-white/70 text-sm font-medium">Page Progress</div>
+                <div className="text-center space-y-2 sm:space-y-3">
+                  <div className="text-white/70 text-xs sm:text-sm font-medium">Page Progress</div>
                   <div className="flex space-x-2">
                     {Array.from({ length: Math.min(totalPages, 8) }, (_, i) => (
                       <button
@@ -379,7 +403,7 @@ export const LearningMode: React.FC<LearningModeProps> = ({ document, onBackToHo
                   disabled={currentPageIndex === totalPages - 1 || !canNavigateToNext()}
                   className="
                     relative group/btn overflow-hidden
-                    bg-gradient-blue hover:shadow-glow-blue text-white px-6 py-3 rounded-2xl
+                    bg-gradient-blue hover:shadow-glow-blue text-white px-3 sm:px-6 py-2 sm:py-3 rounded-xl sm:rounded-2xl
                     font-semibold transition-all duration-300 
                     transform hover:scale-105 hover:-translate-y-1
                     focus:outline-none focus:ring-4 focus:ring-blue-300/50
@@ -389,8 +413,9 @@ export const LearningMode: React.FC<LearningModeProps> = ({ document, onBackToHo
                 >
                   <div className="absolute inset-0 bg-gradient-to-r from-blue-600 to-cyan-600 opacity-0 group-hover/btn:opacity-100 transition-opacity duration-300"></div>
                   <span className="relative flex items-center">
-                    Next
-                    <ChevronRight className="w-5 h-5 ml-2 group-hover/btn:translate-x-1 transition-transform duration-300" />
+                    <span className="hidden sm:inline">Next</span>
+                    <span className="sm:hidden text-sm">Next</span>
+                    <ChevronRight className="w-5 h-5 ml-1 sm:ml-2 group-hover/btn:translate-x-1 transition-transform duration-300" />
                   </span>
                 </button>
               </div>

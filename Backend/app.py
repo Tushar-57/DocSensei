@@ -3,7 +3,7 @@ from flask_cors import CORS
 import os
 from werkzeug.utils import secure_filename
 
-from langchain_utils import extract_text_from_pdf, mcq_quiz_generator, chat_with_document
+from langchain_utils import extract_text_from_pdf, mcq_quiz_generator, chat_with_document, summarize_page
 from logger import get_logger
 from dotenv import load_dotenv
 
@@ -485,6 +485,26 @@ def get_sample_document():
         'name': 'Python Basics Tutorial',
         'type': 'PDF',
     })
+
+
+@app.route('/summarize', methods=['POST'])
+def summarize():
+    data = request.json
+    pages = data.get('pages')
+    page_number = data.get('pageNumber')
+    if not pages or not isinstance(pages, list):
+        return jsonify({'error': 'No pages provided'}), 400
+    try:
+        idx = int(page_number) - 1 if page_number else 0
+        if idx < 0 or idx >= len(pages):
+            idx = 0
+        page_content = pages[idx]
+        ai_logger.info('Generating summary for page %s', page_number)
+        summary = summarize_page(page_content)
+        return jsonify(summary)
+    except Exception as e:
+        ai_logger.error('Summary generation failed: %s', e)
+        return jsonify({'error': str(e)}), 500
 
 
 # if __name__ == '__main__':

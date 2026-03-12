@@ -31,7 +31,7 @@ export const ThemeToggle: React.FC = () => {
     <button
       onClick={toggleTheme}
       className="
-        fixed top-6 right-6 z-50 p-3 rounded-2xl
+        fixed top-3 right-3 sm:top-6 sm:right-6 z-50 p-2 sm:p-3 rounded-xl sm:rounded-2xl
         bg-white/20 dark:bg-dark-800/20 backdrop-blur-md
         border border-white/30 dark:border-dark-700/30
         shadow-glass dark:shadow-glass-dark
@@ -40,13 +40,13 @@ export const ThemeToggle: React.FC = () => {
         group
       "
     >
-      <div className="relative w-6 h-6">
+      <div className="relative w-5 h-5 sm:w-6 sm:h-6">
         <Sun className={`
-          absolute inset-0 w-6 h-6 text-yellow-500 transition-all duration-300
+          absolute inset-0 w-5 h-5 sm:w-6 sm:h-6 text-yellow-500 transition-all duration-300
           ${isDark ? 'opacity-0 rotate-90 scale-0' : 'opacity-100 rotate-0 scale-100'}
         `} />
         <Moon className={`
-          absolute inset-0 w-6 h-6 text-blue-400 transition-all duration-300
+          absolute inset-0 w-5 h-5 sm:w-6 sm:h-6 text-blue-400 transition-all duration-300
           ${isDark ? 'opacity-100 rotate-0 scale-100' : 'opacity-0 -rotate-90 scale-0'}
         `} />
       </div>

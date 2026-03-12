@@ -110,3 +110,29 @@ prompt_generate_quiz_v1 ="""
         {page_content}
         ---
 """
+
+prompt_summarize_page = """
+You are a concise, expert summariser. Given the content of a single document page, produce a clear and well-structured summary that captures the key points.
+
+Rules:
+- Return ONLY a JSON object with the structure shown below. No code fences, no extra text.
+- The summary should be 3-6 bullet points, each 1-2 sentences.
+- Use plain, accessible language suitable for a learner.
+- If the page has very little content (e.g. a title page, table of contents, or acknowledgement), return an appropriate short summary and set "is_content_page" to false.
+- Stay strictly grounded in the provided content. Do not invent information.
+
+Output JSON structure:
+{{
+    "title": "[A short title for this page's content, max 8 words]",
+    "bullets": [
+        "[bullet point 1]",
+        "[bullet point 2]",
+        "[bullet point 3]"
+    ],
+    "is_content_page": true,
+    "one_liner": "[A single-sentence TL;DR of the page]"
+}}
+
+Document Page Content:
+{page_content}
+"""

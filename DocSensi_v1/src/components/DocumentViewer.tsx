@@ -45,26 +45,26 @@ export const DocumentViewer: React.FC<DocumentViewerProps> = ({
 
   return (
     <div className="
-      bg-white/10 dark:bg-dark-800/10 backdrop-blur-xl rounded-3xl p-8
+      bg-white/10 dark:bg-dark-800/10 backdrop-blur-xl rounded-2xl sm:rounded-3xl p-4 sm:p-8
       border border-white/20 dark:border-dark-700/20
       shadow-glass dark:shadow-glass-dark
       transition-all duration-500 hover:shadow-xl
       animate-fade-in
     ">
       {/* Header */}
-      <div className="flex items-center justify-between mb-8">
-        <div className="flex items-center space-x-4">
-          <div className="relative">
-            <div className="bg-gradient-blue rounded-2xl w-12 h-12 flex items-center justify-center">
-              <BookOpen className="w-6 h-6 text-white" />
+      <div className="flex flex-wrap items-center justify-between mb-4 sm:mb-8 gap-3">
+        <div className="flex items-center space-x-3 sm:space-x-4">
+          <div className="relative flex-shrink-0">
+            <div className="bg-gradient-blue rounded-xl sm:rounded-2xl w-10 h-10 sm:w-12 sm:h-12 flex items-center justify-center">
+              <BookOpen className="w-5 h-5 sm:w-6 sm:h-6 text-white" />
             </div>
-            <div className="absolute inset-0 w-12 h-12 bg-blue-400/30 rounded-2xl blur-xl"></div>
+            <div className="absolute inset-0 w-10 h-10 sm:w-12 sm:h-12 bg-blue-400/30 rounded-xl sm:rounded-2xl blur-xl"></div>
           </div>
-          <div className="flex items-center gap-4">
-            <h2 className="text-2xl font-bold text-white dark:text-white font-geist">
+          <div className="flex flex-wrap items-center gap-2 sm:gap-4">
+            <h2 className="text-xl sm:text-2xl font-bold text-white dark:text-white font-geist">
               Page {page.number}
             </h2>
-            <p className="text-white/60 dark:text-white/50 ml-2">
+            <p className="text-white/60 dark:text-white/50 text-sm">
               of {totalPages} pages
             </p>
             {/* Toggle only for PDFs, right of page count */}
@@ -91,7 +91,7 @@ export const DocumentViewer: React.FC<DocumentViewerProps> = ({
       {/* Content */}
       <div className="relative">
         <div className="
-          bg-white/5 dark:bg-dark-700/5 backdrop-blur-sm rounded-2xl p-8
+          bg-white/5 dark:bg-dark-700/5 backdrop-blur-sm rounded-xl sm:rounded-2xl p-4 sm:p-8
           border border-white/10 dark:border-dark-600/10
           shadow-inner-glow
         ">

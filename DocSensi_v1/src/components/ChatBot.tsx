@@ -29,21 +29,21 @@ export const ChatBot: React.FC<ChatBotProps> = ({ messages, onSendMessage, isLoa
 
   return (
     <div className={`
-      fixed bottom-6 right-6 z-50 transition-all duration-500 ease-out
-      ${isMinimized ? 'w-16 h-16' : 'w-96 h-[600px]'}
+      fixed bottom-4 right-4 sm:bottom-6 sm:right-6 z-50 transition-all duration-500 ease-out
+      ${isMinimized ? 'w-14 h-14 sm:w-16 sm:h-16' : 'w-[calc(100vw-2rem)] sm:w-96 h-[70vh] sm:h-[600px] max-w-[24rem]'}
     `}>
       {isMinimized ? (
         <button
           onClick={() => setIsMinimized(false)}
           className="
-            relative group w-16 h-16 bg-gradient-purple rounded-2xl shadow-glass
+            relative group w-14 h-14 sm:w-16 sm:h-16 bg-gradient-purple rounded-2xl shadow-glass
             flex items-center justify-center text-white
             hover:shadow-glow transform hover:scale-110 transition-all duration-300
             animate-pulse-glow
           "
         >
-          <MessageCircle className="w-8 h-8 group-hover:scale-110 transition-transform duration-300" />
-          <div className="absolute inset-0 w-16 h-16 bg-purple-400/30 rounded-2xl blur-xl group-hover:bg-purple-400/50 transition-all duration-300"></div>
+          <MessageCircle className="w-7 h-7 sm:w-8 sm:h-8 group-hover:scale-110 transition-transform duration-300" />
+          <div className="absolute inset-0 w-14 h-14 sm:w-16 sm:h-16 bg-purple-400/30 rounded-2xl blur-xl group-hover:bg-purple-400/50 transition-all duration-300"></div>
           
           {/* Notification dot */}
           <div className="absolute -top-1 -right-1 w-4 h-4 bg-pink-500 rounded-full border-2 border-white animate-bounce">

@@ -4,6 +4,7 @@ import { Document, ChatMessage } from '../types';
 import { DocumentViewer } from './DocumentViewer';
 import { ChatBot } from './ChatBot';
 import { ThemeToggle } from './ThemeToggle';
+import { PageSummary } from './PageSummary';
 
 interface FreeReadingModeProps {
   document: Document;
@@ -98,24 +99,24 @@ export const FreeReadingMode: React.FC<FreeReadingModeProps> = ({ document, onBa
       <div className="relative z-10 bg-white/10 dark:bg-dark-800/10 backdrop-blur-xl border-b border-white/20 dark:border-dark-700/20">
         <div className="max-w-7xl mx-auto px-6 py-4">
           <div className="flex items-center justify-between">
-            <div className="flex items-center space-x-4">
-              <div className="relative">
-                <div className="bg-gradient-purple rounded-2xl w-12 h-12 flex items-center justify-center">
-                  <Compass className="w-6 h-6 text-white" />
+            <div className="flex items-center space-x-3 sm:space-x-4 min-w-0">
+              <div className="relative flex-shrink-0">
+                <div className="bg-gradient-purple rounded-xl sm:rounded-2xl w-10 h-10 sm:w-12 sm:h-12 flex items-center justify-center">
+                  <Compass className="w-5 h-5 sm:w-6 sm:h-6 text-white" />
                 </div>
-                <div className="absolute inset-0 w-12 h-12 bg-purple-400/30 rounded-2xl blur-xl"></div>
+                <div className="absolute inset-0 w-10 h-10 sm:w-12 sm:h-12 bg-purple-400/30 rounded-xl sm:rounded-2xl blur-xl"></div>
               </div>
-              <div>
-                <h1 className="text-2xl font-bold text-white dark:text-white font-geist">
+              <div className="min-w-0">
+                <h1 className="text-lg sm:text-2xl font-bold text-white dark:text-white font-geist truncate">
                   Flexible Exploration
                 </h1>
-                <p className="text-white/70 dark:text-white/60 text-sm">
+                <p className="text-white/70 dark:text-white/60 text-xs sm:text-sm truncate">
                   {document.name}
                 </p>
               </div>
             </div>
             
-            <div className="flex items-center space-x-6">
+            <div className="flex items-center space-x-2 sm:space-x-4 md:space-x-6">
               {/* Reading Progress */}
               <div className="hidden md:flex items-center space-x-3">
                 <BookOpen className="w-5 h-5 text-white/70" />
@@ -134,31 +135,53 @@ export const FreeReadingMode: React.FC<FreeReadingModeProps> = ({ document, onBa
                   ></div>
                 </div>
               </div>
+
+              {/* Page Summary Button */}
+              <PageSummary
+                pages={document.pages}
+                pageNumber={currentPage.number}
+              />
               
               <button
                 onClick={onBackToHome}
                 className="
-                  flex items-center space-x-2 px-4 py-2 rounded-xl
+                  flex items-center space-x-1 sm:space-x-2 px-2 sm:px-4 py-2 rounded-xl
                   text-white/80 hover:text-white hover:bg-white/10
                   font-medium transition-all duration-200 group
                 "
               >
                 <Home className="w-4 h-4 group-hover:scale-110 transition-transform duration-200" />
-                <span>Home</span>
+                <span className="hidden sm:inline">Home</span>
               </button>
             </div>
           </div>
         </div>
       </div>
 
-      <div className="relative z-10 max-w-7xl mx-auto px-6 py-8">
+      <div className="relative z-10 max-w-7xl mx-auto px-4 sm:px-6 py-4 sm:py-8">
+        {/* Mobile progress bar — visible only on small screens */}
+        <div className="md:hidden mb-4 flex items-center gap-3 bg-white/10 backdrop-blur-sm rounded-2xl px-4 py-2.5 border border-white/15">
+          <div className="text-white text-xs font-medium whitespace-nowrap">
+            Pg {currentPageIndex + 1}/{totalPages}
+          </div>
+          <div className="flex-1 h-1.5 bg-white/20 rounded-full overflow-hidden">
+            <div 
+              className="h-full bg-gradient-purple rounded-full transition-all duration-500"
+              style={{ width: `${readingProgress}%` }}
+            ></div>
+          </div>
+          <div className="text-white/60 text-xs whitespace-nowrap">
+            {Math.round(readingProgress)}%
+          </div>
+        </div>
+
         <div className="space-y-6">
           {/* Document Viewer */}
           <DocumentViewer page={currentPage} totalPages={totalPages} document={document} />
 
           {/* Navigation */}
           <div className="
-            bg-white/10 dark:bg-dark-800/10 backdrop-blur-xl rounded-3xl p-6
+            bg-white/10 dark:bg-dark-800/10 backdrop-blur-xl rounded-2xl sm:rounded-3xl p-4 sm:p-6
             border border-white/20 dark:border-dark-700/20
             shadow-glass dark:shadow-glass-dark
           ">
@@ -167,18 +190,19 @@ export const FreeReadingMode: React.FC<FreeReadingModeProps> = ({ document, onBa
                 onClick={handlePrevPage}
                 disabled={currentPageIndex === 0}
                 className="
-                  flex items-center space-x-3 px-6 py-3 rounded-2xl
+                  flex items-center space-x-1 sm:space-x-3 px-3 sm:px-6 py-2 sm:py-3 rounded-xl sm:rounded-2xl
                   text-white/80 hover:text-white hover:bg-white/10
                   font-medium transition-all duration-200 group
                   disabled:opacity-50 disabled:cursor-not-allowed
                 "
               >
                 <ChevronLeft className="w-5 h-5 group-hover:-translate-x-1 transition-transform duration-200" />
-                <span>Previous Page</span>
+                <span className="hidden sm:inline">Previous Page</span>
+                <span className="sm:hidden text-sm">Prev</span>
               </button>
 
               {/* Page Navigation */}
-              <div className="text-center space-y-3">
+              <div className="text-center space-y-2 sm:space-y-3 hidden sm:block">
                 <div className="text-white/70 text-sm font-medium">Quick Navigation</div>
                 <div className="flex space-x-2 max-w-md overflow-x-auto">
                   {Array.from({ length: Math.min(totalPages, 10) }, (_, i) => (
@@ -206,12 +230,19 @@ export const FreeReadingMode: React.FC<FreeReadingModeProps> = ({ document, onBa
                 </div>
               </div>
 
+              {/* Mobile page indicator */}
+              <div className="sm:hidden text-center">
+                <div className="text-white font-medium text-sm">
+                  {currentPageIndex + 1} / {totalPages}
+                </div>
+              </div>
+
               <button
                 onClick={handleNextPage}
                 disabled={currentPageIndex === totalPages - 1}
                 className="
                   relative group/btn overflow-hidden
-                  bg-gradient-purple hover:shadow-glow text-white px-6 py-3 rounded-2xl
+                  bg-gradient-purple hover:shadow-glow text-white px-3 sm:px-6 py-2 sm:py-3 rounded-xl sm:rounded-2xl
                   font-semibold transition-all duration-300 
                   transform hover:scale-105 hover:-translate-y-1
                   focus:outline-none focus:ring-4 focus:ring-purple-300/50
@@ -221,8 +252,9 @@ export const FreeReadingMode: React.FC<FreeReadingModeProps> = ({ document, onBa
               >
                 <div className="absolute inset-0 bg-gradient-to-r from-purple-600 to-pink-600 opacity-0 group-hover/btn:opacity-100 transition-opacity duration-300"></div>
                 <span className="relative flex items-center">
-                  Next Page
-                  <ChevronRight className="w-5 h-5 ml-3 group-hover/btn:translate-x-1 transition-transform duration-300" />
+                  <span className="hidden sm:inline">Next Page</span>
+                  <span className="sm:hidden text-sm">Next</span>
+                  <ChevronRight className="w-5 h-5 ml-1 sm:ml-3 group-hover/btn:translate-x-1 transition-transform duration-300" />
                 </span>
               </button>
             </div>

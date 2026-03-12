@@ -1,14 +1,19 @@
 #lanchain_utils.py
 from logger import get_logger
 import json
+from functools import lru_cache
 from langchain_core.output_parsers import JsonOutputParser
 from langchain_core.messages import SystemMessage, HumanMessage
 import os
+import platform
 from dotenv import load_dotenv
 from langchain_openai import ChatOpenAI
 from langchain_core.prompts import ChatPromptTemplate
 import prompt_library
 
+from docling.document_converter import DocumentConverter, PdfFormatOption
+from docling.datamodel.base_models import InputFormat
+from docling.datamodel.pipeline_options import PdfPipelineOptions, EasyOcrOptions
 
 
 load_dotenv()
@@ -26,21 +31,68 @@ if os.environ.get("LANGSMITH_TRACING", "false").lower() == "true":
     except Exception as e:
         ai_logger.error("LangSmith test trace failed: %s", e)
 
-def extract_text_from_pdf(file_path: str) -> str:
+
+def _build_docling_converter(force_ocr: bool = False):
+    """Build a Docling DocumentConverter with OCR enabled."""
+    pipeline_options = PdfPipelineOptions()
+    pipeline_options.do_ocr = True
+    pipeline_options.do_table_structure = True
+
+    # Use macOS-native OCR when available for speed; fall back to EasyOCR
+    if platform.system() == "Darwin":
+        try:
+            from docling.datamodel.pipeline_options import OcrMacOptions
+            pipeline_options.ocr_options = OcrMacOptions(force_full_page_ocr=force_ocr)
+        except ImportError:
+            pipeline_options.ocr_options = EasyOcrOptions(force_full_page_ocr=force_ocr)
+    else:
+        pipeline_options.ocr_options = EasyOcrOptions(force_full_page_ocr=force_ocr)
+
+    return DocumentConverter(
+        format_options={
+            InputFormat.PDF: PdfFormatOption(pipeline_options=pipeline_options)
+        }
+    )
+
+
+def extract_text_from_pdf(file_path: str) -> list:
     """
-    Extract text from a PDF or text file. For PDFs, returns a list of page texts. For text files, returns a single string in a list.
+    Extract text from a PDF or text file using Docling (with OCR support for
+    scanned / image-only pages).  Returns a list of page texts.
     """
     ai_logger.info(f'Starting extraction for {file_path}')
     if file_path.lower().endswith('.pdf'):
         try:
-            import PyPDF2
-            with open(file_path, 'rb') as f:
-                reader = PyPDF2.PdfReader(f)
-                pages = [page.extract_text() or '' for page in reader.pages]
+            # First pass — normal OCR (fast, only OCRs where text layer is missing)
+            converter = _build_docling_converter(force_ocr=False)
+            result = converter.convert(file_path)
+            doc = result.document
+
+            num_pages = doc.num_pages()
+            pages = []
+            for page_no in sorted(doc.pages.keys()):
+                page_text = doc.export_to_text(page_no=page_no)
+                pages.append(page_text)
+
+            # If most pages came back empty, retry with forced full-page OCR
+            non_empty = sum(1 for p in pages if p.strip())
+            if num_pages > 0 and non_empty / num_pages < 0.3:
+                ai_logger.info(
+                    'Only %d/%d pages have text — retrying with full-page OCR',
+                    non_empty, num_pages,
+                )
+                converter = _build_docling_converter(force_ocr=True)
+                result = converter.convert(file_path)
+                doc = result.document
+                pages = [
+                    doc.export_to_text(page_no=pn)
+                    for pn in sorted(doc.pages.keys())
+                ]
+
             ai_logger.info('Extracted %d pages from PDF: %s', len(pages), file_path)
             return pages
-        except (ImportError, OSError, PyPDF2.errors.PdfReadError) as e:
-            ai_logger.error('Error extracting PDF: %s', e)
+        except Exception as e:
+            ai_logger.error('Error extracting PDF with Docling: %s', e)
             return [f"[Error extracting PDF: {e}]"]
     else:
         # Fallback for text files
@@ -147,3 +199,37 @@ def chat_with_document(message: str, context: str, document_name: str, history: 
     except Exception as e:
         ai_logger.error('chat_with_document failed: %s', e)
         return "I'm sorry, I encountered an error generating a response. Please try again."
+
+
+@lru_cache(maxsize=256)
+def summarize_page(page_content: str) -> dict:
+    """
+    Generate a structured summary for a single page of content.
+    Results are cached (LRU, 256 entries) to save on repeated LLM calls.
+    """
+    ai_logger.info('summarize_page called (content length: %d)', len(page_content))
+
+    word_count = len(page_content.split()) if page_content else 0
+    if word_count < 15:
+        return {
+            "title": "Minimal Content",
+            "bullets": ["This page has very little text content."],
+            "is_content_page": False,
+            "one_liner": "This page contains minimal or no readable content.",
+        }
+
+    try:
+        system_message = prompt_library.prompt_summarize_page
+        prompt = ChatPromptTemplate.from_messages([
+            ("system", system_message),
+            ("user", "Summarise the page content provided above."),
+        ])
+        chain = prompt | llm | JsonOutputParser()
+        response = chain.invoke({"page_content": page_content[:4000]})
+        ai_logger.info('Page summary generated successfully')
+
+        # Ensure serialisable
+        return json.loads(json.dumps(response))
+    except Exception as e:
+        ai_logger.error('summarize_page failed: %s', e)
+        return {"error": f"Failed to generate summary: {e}"}
