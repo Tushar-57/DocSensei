@@ -33,20 +33,21 @@ if os.environ.get("LANGSMITH_TRACING", "false").lower() == "true":
 
 
 def _build_docling_converter(force_ocr: bool = False):
-    """Build a Docling DocumentConverter with OCR enabled."""
+    """Build a Docling DocumentConverter with OCR enabled on macOS, disabled elsewhere."""
     pipeline_options = PdfPipelineOptions()
-    pipeline_options.do_ocr = True
     pipeline_options.do_table_structure = True
 
-    # Use macOS-native OCR when available for speed; fall back to EasyOCR
+    # Use macOS-native OCR when available; disable OCR on other platforms
+    # (easyocr is not installed on the server and most PDFs have selectable text)
     if platform.system() == "Darwin":
+        pipeline_options.do_ocr = True
         try:
             from docling.datamodel.pipeline_options import OcrMacOptions
             pipeline_options.ocr_options = OcrMacOptions(force_full_page_ocr=force_ocr)
         except ImportError:
             pipeline_options.ocr_options = EasyOcrOptions(force_full_page_ocr=force_ocr)
     else:
-        pipeline_options.ocr_options = EasyOcrOptions(force_full_page_ocr=force_ocr)
+        pipeline_options.do_ocr = False
 
     return DocumentConverter(
         format_options={
