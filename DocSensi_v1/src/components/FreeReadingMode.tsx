@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import { ChevronLeft, ChevronRight, MessageCircle, Home, BookOpen, Compass } from 'lucide-react';
 import { Document, ChatMessage } from '../types';
 import { DocumentViewer } from './DocumentViewer';
