@@ -6,7 +6,6 @@ python-dotenv
 langchain-openai
 langchain-core
 PyMuPDF
-pytesseract
-Pillow
+pypdf
 setuptools
 gunicorn==23.0.0

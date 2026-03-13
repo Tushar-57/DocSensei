@@ -13,6 +13,7 @@ import prompt_library
 import base64
 import fitz  # PyMuPDF
 from openai import OpenAI
+from pypdf import PdfReader
 
 
 load_dotenv()
@@ -68,16 +69,17 @@ def extract_page_vision(file_path: str, page_number: int) -> str:
 
 def extract_text_from_pdf(file_path: str) -> list:
     """
-    Extract text from a PDF using PyMuPDF (text layer only, no Vision).
+    Extract text from a PDF using pypdf (text layer only, no Vision).
     Image-only pages return empty string — call extract_page_vision() lazily for those.
     Returns a list of page texts.
     """
-    ai_logger.info(f'Starting extraction for {file_path}')
+    ai_logger.info('Starting extraction for %s', file_path)
     if file_path.lower().endswith('.pdf'):
         try:
-            doc = fitz.open(file_path)
-            pages = [page.get_text().strip() for page in doc]
-            doc.close()
+            reader = PdfReader(file_path)
+            if reader.is_encrypted:
+                reader.decrypt("")
+            pages = [(page.extract_text() or '').strip() for page in reader.pages]
             ai_logger.info('Extracted %d pages from PDF: %s', len(pages), file_path)
             return pages
         except Exception as e:

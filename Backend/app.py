@@ -1,6 +1,9 @@
 from flask import Flask, request, jsonify, send_from_directory, url_for
 from flask_cors import CORS
+import hashlib
+import json
 import os
+from urllib.parse import urlparse
 from werkzeug.utils import secure_filename
 
 from langchain_utils import extract_text_from_pdf, extract_page_vision, mcq_quiz_generator, chat_with_document, summarize_page
@@ -362,6 +365,7 @@ ai_logger = get_logger('AI')
 
 UPLOAD_FOLDER = 'uploads'
 ALLOWED_EXTENSIONS = {'pdf', 'doc', 'docx'}
+EXTRACTION_CACHE_SUFFIX = '.pages.json'
 
 app = Flask(__name__)
 CORS(app, resources={r"/*": {"origins": "*"}}, supports_credentials=True)
@@ -372,6 +376,64 @@ os.makedirs(UPLOAD_FOLDER, exist_ok=True)
 def allowed_file(filename):
     return '.' in filename and \
            filename.rsplit('.', 1)[1].lower() in ALLOWED_EXTENSIONS
+
+
+def hash_uploaded_file(file_storage):
+    digest = hashlib.sha256()
+    file_storage.stream.seek(0)
+    while True:
+        chunk = file_storage.stream.read(1024 * 1024)
+        if not chunk:
+            break
+        digest.update(chunk)
+    file_storage.stream.seek(0)
+    return digest.hexdigest()
+
+
+def resolve_uploaded_file_path(file_url):
+    if not file_url:
+        return None
+    parsed_url = urlparse(file_url)
+    filename = secure_filename(os.path.basename(parsed_url.path))
+    if not filename:
+        return None
+    return os.path.join(app.config['UPLOAD_FOLDER'], filename)
+
+
+def get_extraction_cache_path(file_path):
+    return f'{file_path}{EXTRACTION_CACHE_SUFFIX}'
+
+
+def load_extraction_cache(file_path):
+    cache_path = get_extraction_cache_path(file_path)
+    if not os.path.exists(cache_path):
+        return None
+    try:
+        with open(cache_path, 'r', encoding='utf-8') as cache_file:
+            cached_payload = json.load(cache_file)
+        pages = cached_payload.get('pages')
+        if isinstance(pages, list) and all(isinstance(page, str) for page in pages):
+            return pages
+    except (OSError, json.JSONDecodeError) as exc:
+        system_logger.warning('Failed to read extraction cache for %s: %s', file_path, exc)
+    return None
+
+
+def save_extraction_cache(file_path, pages):
+    cache_path = get_extraction_cache_path(file_path)
+    try:
+        with open(cache_path, 'w', encoding='utf-8') as cache_file:
+            json.dump({'pages': pages}, cache_file, ensure_ascii=False)
+    except OSError as exc:
+        system_logger.warning('Failed to write extraction cache for %s: %s', file_path, exc)
+
+
+def is_successful_extraction(pages):
+    return (
+        isinstance(pages, list)
+        and all(isinstance(page, str) for page in pages)
+        and not any(page.startswith('[Error ') for page in pages)
+    )
 
 # Serve uploaded files
 @app.route('/uploads/<path:filename>')
@@ -388,44 +450,58 @@ def upload_file():
         system_logger.error('No selected file in upload request')
         return jsonify({'error': 'No selected file'}), 400
     if file and allowed_file(file.filename):
-        filename = secure_filename(file.filename)
-        file_path = os.path.join(app.config['UPLOAD_FOLDER'], filename)
-        file.save(file_path)
-        system_logger.info(f'File uploaded: {filename}')
-        # Return the full URL to the uploaded file
-        file_url = url_for('uploaded_file', filename=filename, _external=True)
-        return jsonify({'fileUrl': file_url})
+        original_name = secure_filename(file.filename)
+        _, extension = os.path.splitext(original_name)
+        file_hash = hash_uploaded_file(file)
+        stored_filename = f'{file_hash}{extension.lower()}'
+        file_path = os.path.join(app.config['UPLOAD_FOLDER'], stored_filename)
+        file_already_exists = os.path.exists(file_path)
+        if not file_already_exists:
+            file.save(file_path)
+            system_logger.info('File uploaded: %s -> %s', original_name, stored_filename)
+        else:
+            system_logger.info('Duplicate upload reused existing file: %s -> %s', original_name, stored_filename)
+        file_url = url_for('uploaded_file', filename=stored_filename, _external=True)
+        return jsonify({'fileUrl': file_url, 'cached': file_already_exists})
     system_logger.error('Invalid file type uploaded')
     return jsonify({'error': 'Invalid file type'}), 400
 
 @app.route('/extract', methods=['POST'])
 def extract_content():
-    data = request.json
+    data = request.json or {}
     file_url = data.get('fileUrl')
-    # Convert file_url to local file path
-    if not file_url or not file_url.startswith('http'):
+    if not file_url:
         system_logger.error('Invalid fileUrl received for extraction')
         return jsonify({'error': 'Invalid fileUrl'}), 400
-    filename = file_url.split('/')[-1]
-    file_path = os.path.join(app.config['UPLOAD_FOLDER'], filename)
+    file_path = resolve_uploaded_file_path(file_url)
+    if not file_path:
+        system_logger.error('Could not resolve file path from fileUrl: %s', file_url)
+        return jsonify({'error': 'Invalid fileUrl'}), 400
     if not os.path.exists(file_path):
-        system_logger.error(f'File not found for extraction: {file_path}')
+        system_logger.error('File not found for extraction: %s', file_path)
         return jsonify({'error': 'File not found'}), 404
-    ai_logger.info(f'Extracting content from {file_path}')
+
+    cached_pages = load_extraction_cache(file_path)
+    if cached_pages is not None:
+        ai_logger.info('Using cached extraction for %s', file_path)
+        return jsonify({'pages': cached_pages, 'cached': True})
+
+    ai_logger.info('Extracting content from %s', file_path)
     content = extract_text_from_pdf(file_path)
-    ai_logger.info(f'Extraction complete for {file_path}')
-    # If PDF, content is a list of page texts; if text file, it's a list with one item
-    return jsonify({'pages': content})
+    if is_successful_extraction(content):
+        save_extraction_cache(file_path, content)
+    ai_logger.info('Extraction complete for %s', file_path)
+    return jsonify({'pages': content, 'cached': False})
 
 @app.route('/generate-quiz', methods=['POST'])
 def generate_quiz():
     data = request.json
-    ai_logger.info(f"[generate-quiz] Received request body: {data}")
+    ai_logger.info('[generate-quiz] Received request body: %s', data)
     pages = data.get('pages')
     page_number = data.get('pageNumber')
     document_id = data.get('documentId')
     if not pages or not isinstance(pages, list):
-        ai_logger.error(f'No pages provided for quiz generation. Got: {pages}')
+        ai_logger.error('No pages provided for quiz generation. Got: %s', pages)
         return jsonify({'error': 'No pages provided'}), 400
     try:
         idx = int(page_number) - 1 if page_number else 0
