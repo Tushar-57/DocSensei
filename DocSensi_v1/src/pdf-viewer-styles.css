@@ -7,6 +7,43 @@
   display: block;
 }
 
+.pdf-viewer-viewport {
+  width: 100%;
+}
+
+.pdf-viewer-scroller {
+  max-height: 75vh;
+  overflow: auto;
+  scrollbar-gutter: stable both-edges;
+}
+
+.pdf-page-shell {
+  display: flex;
+  align-items: flex-start;
+  justify-content: center;
+  width: 100%;
+}
+
+.pdf-page-shell .react-pdf__Document,
+.pdf-page-shell .react-pdf__Page {
+  max-width: 100%;
+}
+
+.pdf-page-shell canvas {
+  display: block;
+  max-width: 100%;
+  height: auto !important;
+}
+
+.pdf-page-loading {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 320px;
+  color: rgba(255, 255, 255, 0.72);
+  font-size: 0.95rem;
+}
+
 /* Only style the extracted text container, not the PDF.js layers */
 .extracted-text-container {
   background: rgba(255,255,255,0.8);

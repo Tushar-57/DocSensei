@@ -22,20 +22,22 @@ export const DocumentViewer: React.FC<DocumentViewerProps> = ({
   // Toggle state: true = show rendered (PDF), false = show extracted text
   const [showRendered, setShowRendered] = useState(true);
 
-  // Measure container width so the PDF page fills it responsively
-  const pdfContainerRef = useRef<HTMLDivElement>(null);
+  // Measure a non-scrolling wrapper so scrollbar appearance does not change page width.
+  const pdfViewportRef = useRef<HTMLDivElement>(null);
   const [pdfWidth, setPdfWidth] = useState(700);
+  const [pageAspectRatio, setPageAspectRatio] = useState(1.414);
 
   useEffect(() => {
     const updateWidth = () => {
-      if (pdfContainerRef.current) {
-        const w = pdfContainerRef.current.clientWidth;
-        if (w > 0) setPdfWidth(w - 32); // 32px for inner padding
+      if (pdfViewportRef.current) {
+        const width = Math.floor(pdfViewportRef.current.clientWidth);
+        if (width > 0) setPdfWidth(width);
       }
     };
+
     updateWidth();
     const observer = new ResizeObserver(updateWidth);
-    if (pdfContainerRef.current) observer.observe(pdfContainerRef.current);
+    if (pdfViewportRef.current) observer.observe(pdfViewportRef.current);
     return () => observer.disconnect();
   }, []);
 
@@ -98,24 +100,37 @@ export const DocumentViewer: React.FC<DocumentViewerProps> = ({
           {/* Toggle logic: for PDFs, show either rendered or extracted text. For Word, show link. For others, show text. */}
           {fileUrl && docType === 'PDF' ? (
             showRendered ? (
-              <div
-                ref={pdfContainerRef}
-                className="pdf-viewer-container"
-                style={{ width: '100%', maxHeight: '75vh', overflowY: 'auto', overflowX: 'auto' }}
-              >
-                <PdfDocument
-                  file={fileUrl}
-                  onLoadSuccess={({ numPages }) => {
-                    if (typeof page.number === 'number' && page.number > numPages && onPageChange) {
-                      onPageChange(1);
-                    }
-                  }}
-                >
-                  <PdfPage
-                    pageNumber={page.number}
-                    width={pdfWidth}
-                  />
-                </PdfDocument>
+              <div ref={pdfViewportRef} className="pdf-viewer-viewport">
+                <div className="pdf-viewer-scroller">
+                  <div
+                    className="pdf-page-shell"
+                    style={{ minHeight: Math.max(320, Math.round(pdfWidth * pageAspectRatio)) }}
+                  >
+                    <PdfDocument
+                      file={fileUrl}
+                      loading={<div className="pdf-page-loading">Loading page...</div>}
+                      onLoadSuccess={({ numPages }) => {
+                        if (typeof page.number === 'number' && page.number > numPages && onPageChange) {
+                          onPageChange(1);
+                        }
+                      }}
+                    >
+                      <PdfPage
+                        pageNumber={page.number}
+                        width={pdfWidth}
+                        loading={null}
+                        renderAnnotationLayer={false}
+                        renderTextLayer={false}
+                        onLoadSuccess={(loadedPage) => {
+                          const viewport = loadedPage.getViewport({ scale: 1 });
+                          if (viewport.width > 0 && viewport.height > 0) {
+                            setPageAspectRatio(viewport.height / viewport.width);
+                          }
+                        }}
+                      />
+                    </PdfDocument>
+                  </div>
+                </div>
               </div>
             ) : (
               <div className="extracted-text-container dark:bg-dark-700/80 border dark:border-dark-600">
