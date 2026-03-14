@@ -49,15 +49,42 @@ from PIL import Image
 import io
 
 def _is_text_gibberish(text: str) -> bool:
-    if not text or len(text) < 50:
+    if not text or len(text) < 20:
         return False
+        
+    if text.count('\ufffd') > len(text) * 0.05:
+        return True
+        
     try:
         enc = tiktoken.get_encoding("cl100k_base")
         tokens = enc.encode(text)
         if len(tokens) == 0:
             return True
         density = len(text) / len(tokens)
-        return density < 1.5
+        
+        if density < 1.5:
+            return True
+            
+        alpha_chars = [c for c in text if c.isalpha()]
+        if not alpha_chars:
+            return False
+            
+        upper_ratio = sum(1 for c in alpha_chars if c.isupper()) / len(alpha_chars)
+        space_ratio = text.count(' ') / len(text)
+        
+        # Random all-caps tends to have density < 3.0, while real headers > 3.5
+        if upper_ratio > 0.8 and density < 3.0:
+            return True
+            
+        # Large blocks of unspaced garbage letters
+        if space_ratio < 0.05 and density < 2.5:
+            return True
+            
+        # Miscellaneous highly suspicious density
+        if density < 2.0:
+            return True
+            
+        return False
     except Exception:
         return False
 
