@@ -1,5 +1,7 @@
 services:
   - type: web
     name: docsensei-backend
-    runtime: docker
+    runtime: python
     rootDir: Backend
+    buildCommand: pip install -r requirements.txt
+    startCommand: gunicorn --bind 0.0.0.0:$PORT --workers 1 --threads 2 --timeout 240 --graceful-timeout 30 app:app
