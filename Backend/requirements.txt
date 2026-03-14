@@ -9,3 +9,5 @@ PyMuPDF
 pypdf
 setuptools
 gunicorn==23.0.0
+pytesseract
+Pillow

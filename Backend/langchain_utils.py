@@ -44,192 +44,102 @@ INITIAL_EXTRACTION_MAX_PAGES = max(
 )
 
 
-def _looks_like_gibberish(text: str) -> bool:
-    """
-    Heuristic to detect broken/encoded text-layer extraction.
-    We treat these pages as missing text and defer to stronger fallbacks.
-    """
-    if not text:
-        return False
-
-    sample = text[:2000]
-    letters = [c for c in sample if c.isalpha()]
-    if len(letters) < 120:
-        return False
-
-    total_letters = len(letters)
-    upper_ratio = sum(1 for c in letters if c.isupper()) / total_letters
-    vowel_ratio = sum(1 for c in letters if c.lower() in "aeiou") / total_letters
-    rare_ratio = sum(1 for c in letters if c in "QZXJKVWqzxjkvw") / total_letters
-
-    # Typical broken-font extraction is very uppercase-heavy and lacks vowel patterns.
-    return upper_ratio > 0.78 and vowel_ratio < 0.24 and rare_ratio > 0.16
-
-
-def _ocr_page_vision(page: fitz.Page) -> str:
-    """Render a PDF page to PNG and extract text via GPT-4o-mini Vision."""
-    pix = page.get_pixmap(matrix=fitz.Matrix(2, 2))
-    b64 = base64.b64encode(pix.tobytes("png")).decode()
-    response = _openai_client.chat.completions.create(
-        model="gpt-4o-mini",
-        messages=[{
-            "role": "user",
-            "content": [
-                {"type": "text", "text": "Extract all text from this image exactly as it appears. Return only the extracted text, no commentary."},
-                {"type": "image_url", "image_url": {"url": f"data:image/png;base64,{b64}", "detail": "high"}}
-            ]
-        }],
-        max_tokens=2000
-    )
-    return response.choices[0].message.content
-
-
-@lru_cache(maxsize=512)
-def extract_page_vision(file_path: str, page_number: int) -> str:
-    """
-    Extract text from a single image-only page via GPT-4o-mini Vision.
-    Cached so each page is only ever Vision-processed once per server lifetime.
-    """
-    ai_logger.info('Vision OCR for %s page %d', file_path, page_number)
-    doc = fitz.open(file_path)
-    page = doc[page_number - 1]
-    text = _ocr_page_vision(page)
-    doc.close()
-    return text
-
-
 def extract_text_from_pdf(file_path: str) -> list:
     """
-    Extract text from a PDF using pypdf (text layer only, no Vision).
-    Image-only pages return empty string — call extract_page_vision() lazily for those.
+    Extract text from a PDF using PyMuPDF (fitz) first, fallback to pypdf.
     Returns a list of page texts.
     """
     start_time = time.monotonic()
     ai_logger.info('Starting extraction for %s', file_path)
     if file_path.lower().endswith('.pdf'):
         try:
-            reader = PdfReader(file_path)
-            if reader.is_encrypted:
-                reader.decrypt("")
-            total_pages = len(reader.pages)
-            ai_logger.info('PDF opened successfully: %s (pages=%d)', file_path, total_pages)
-
             pages = []
             non_empty_pages = 0
             fallback_pages = 0
-            fitz_doc = None
             deferred_pages = 0
 
-            for idx, page in enumerate(reader.pages, start=1):
-                if idx > 1:
-                    elapsed = time.monotonic() - start_time
-                    hit_time_budget = elapsed >= INITIAL_EXTRACTION_TIME_BUDGET_SEC
-                    hit_page_budget = (
-                        INITIAL_EXTRACTION_MAX_PAGES > 0
-                        and (idx - 1) >= INITIAL_EXTRACTION_MAX_PAGES
-                    )
-                    if hit_time_budget or hit_page_budget:
-                        deferred_pages = total_pages - (idx - 1)
-                        ai_logger.info(
-                            'Initial extraction budget reached for %s at page %d/%d '
-                            '(elapsed=%.2fs, max_time=%.2fs, max_pages=%d); deferring %d pages to /extract-page',
-                            file_path,
-                            idx - 1,
-                            total_pages,
-                            elapsed,
-                            INITIAL_EXTRACTION_TIME_BUDGET_SEC,
-                            INITIAL_EXTRACTION_MAX_PAGES,
-                            deferred_pages,
-                        )
-                        break
-
-                page_text = ''
-                try:
-                    page_text = (page.extract_text() or '').strip()
-                except Exception as page_exc:
-                    fallback_pages += 1
-                    ai_logger.warning(
-                        'pypdf text extraction failed on page %d/%d for %s: %s; falling back to PyMuPDF text layer',
-                        idx,
-                        total_pages,
-                        file_path,
-                        page_exc,
-                    )
-                    if fitz_doc is None:
-                        fitz_doc = fitz.open(file_path)
-                    try:
-                        page_text = fitz_doc[idx - 1].get_text().strip()
-                    except Exception as fitz_exc:
-                        ai_logger.error(
-                            'PyMuPDF fallback also failed on page %d/%d for %s: %s',
-                            idx,
-                            total_pages,
-                            file_path,
-                            fitz_exc,
-                        )
-                        page_text = ''
-
-                if page_text and _looks_like_gibberish(page_text):
-                    ai_logger.warning(
-                        'Detected gibberish text-layer output on page %d/%d for %s; trying PyMuPDF fallback',
-                        idx,
-                        total_pages,
-                        file_path,
-                    )
-                    fallback_pages += 1
-                    if fitz_doc is None:
-                        fitz_doc = fitz.open(file_path)
-                    try:
-                        page_text = (fitz_doc[idx - 1].get_text() or '').strip()
-                    except Exception as fitz_exc:
-                        ai_logger.error(
-                            'PyMuPDF fallback failed after gibberish detection on page %d/%d for %s: %s',
-                            idx,
-                            total_pages,
-                            file_path,
-                            fitz_exc,
-                        )
-                        page_text = ''
-
-                if page_text and _looks_like_gibberish(page_text):
-                    ai_logger.warning(
-                        'Page %d/%d for %s still looks gibberish after text-layer fallbacks; deferring to lazy extraction',
-                        idx,
-                        total_pages,
-                        file_path,
-                    )
-                    page_text = ''
-
-                if page_text:
-                    non_empty_pages += 1
-                pages.append(page_text)
-
-                if idx <= 3 or idx == total_pages or idx % 25 == 0:
-                    ai_logger.info(
-                        'Extraction progress %s: page %d/%d (non_empty=%d, fallback=%d)',
-                        file_path,
-                        idx,
-                        total_pages,
-                        non_empty_pages,
-                        fallback_pages,
-                    )
-
-            if deferred_pages > 0:
-                pages.extend([''] * deferred_pages)
-
-            if fitz_doc is not None:
+            # Try PyMuPDF First
+            try:
+                fitz_doc = fitz.open(file_path)
+                total_pages = len(fitz_doc)
+                ai_logger.info('PDF opened successfully with PyMuPDF: %s (pages=%d)', file_path, total_pages)
+                
+                for idx in range(total_pages):
+                    if idx > 0:
+                        elapsed = time.monotonic() - start_time
+                        hit_time_budget = elapsed >= INITIAL_EXTRACTION_TIME_BUDGET_SEC
+                        hit_page_budget = (INITIAL_EXTRACTION_MAX_PAGES > 0 and idx >= INITIAL_EXTRACTION_MAX_PAGES)
+                        
+                        if hit_time_budget or hit_page_budget:
+                            deferred_pages = total_pages - idx
+                            ai_logger.info('Initial extraction budget reached; deferring %d pages', deferred_pages)
+                            break
+                    
+                    page_text = fitz_doc[idx].get_text().strip()
+                    if page_text:
+                        ai_logger.info('Page %d/%d extracted via PyMuPDF. Length: %d chars. Snippet: %s', 
+                                       idx + 1, total_pages, len(page_text), repr(page_text[:100]))
+                    if not page_text:
+                        # Fallback to pypdf on empty page
+                        try:
+                            reader = PdfReader(file_path)
+                            if reader.is_encrypted:
+                                reader.decrypt("")
+                            page_text = (reader.pages[idx].extract_text() or '').strip()
+                            if page_text:
+                                ai_logger.info('Page %d/%d extracted via pypdf FALLBACK. Length: %d chars. Snippet: %s', 
+                                               idx + 1, total_pages, len(page_text), repr(page_text[:100]))
+                                fallback_pages += 1
+                            else:
+                                ai_logger.warning('Page %d/%d is EMPTY after both PyMuPDF and pypdf extraction.', 
+                                                  idx + 1, total_pages)
+                        except Exception as e:
+                            ai_logger.warning('pypdf fallback failed for page %d: %s', idx + 1, e)
+                    
+                    if page_text:
+                        non_empty_pages += 1
+                    pages.append(page_text)
+                
                 fitz_doc.close()
+                if deferred_pages > 0:
+                    pages.extend([''] * deferred_pages)
+                    
+            except Exception as e:
+                ai_logger.error('PyMuPDF failed on %s, falling back to pypdf completely: %s', file_path, e)
+                # Fallback to pypdf entirely
+                reader = PdfReader(file_path)
+                if reader.is_encrypted:
+                    reader.decrypt("")
+                total_pages = len(reader.pages)
+                for idx, page in enumerate(reader.pages):
+                    if idx > 0:
+                        elapsed = time.monotonic() - start_time
+                        hit_time_budget = elapsed >= INITIAL_EXTRACTION_TIME_BUDGET_SEC
+                        hit_page_budget = (INITIAL_EXTRACTION_MAX_PAGES > 0 and idx >= INITIAL_EXTRACTION_MAX_PAGES)
+                        
+                        if hit_time_budget or hit_page_budget:
+                            deferred_pages = total_pages - idx
+                            break
+                            
+                    page_text = (page.extract_text() or '').strip()
+                    if page_text:
+                        ai_logger.info('Page %d/%d extracted entirely via pypdf fallback. Length: %d chars. Snippet: %s', 
+                                       idx + 1, total_pages, len(page_text), repr(page_text[:100]))
+                        non_empty_pages += 1
+                        fallback_pages += 1
+                    else:
+                        ai_logger.warning('Page %d/%d is EMPTY using absolute pypdf fallback.', idx + 1, total_pages)
+                        
+                    pages.append(page_text)
+                    
+                if deferred_pages > 0:
+                    pages.extend([''] * deferred_pages)
 
             elapsed = time.monotonic() - start_time
-            ai_logger.info(
-                'Extracted %d pages from PDF: %s (non_empty=%d, fallback=%d, elapsed=%.2fs)',
-                len(pages),
-                file_path,
-                non_empty_pages,
-                fallback_pages,
-                elapsed,
-            )
+            ai_logger.info('Extracted %d pages from PDF: %s (non_empty=%d, fallback=%d, elapsed=%.2fs)',
+                           len(pages), file_path, non_empty_pages, fallback_pages, elapsed)
             return pages
+            
         except Exception as e:
             ai_logger.exception('Error extracting PDF %s: %s', file_path, e)
             return [f"[Error extracting PDF: {e}]"]
@@ -247,58 +157,49 @@ def extract_text_from_pdf(file_path: str) -> list:
 def extract_page_text(file_path: str, page_number: int, allow_vision: bool = True) -> str:
     """
     Extract a single page with layered fallbacks:
-    1) pypdf text layer, 2) PyMuPDF text layer, 3) Vision OCR (optional).
+    1) PyMuPDF text layer, 2) pypdf text layer. No AI OCR.
     """
     ai_logger.info('Single-page extraction requested: %s page=%d', file_path, page_number)
 
     if page_number < 1:
         raise ValueError('page_number must be >= 1')
-
-    try:
-        reader = PdfReader(file_path)
-        total_pages = len(reader.pages)
-        if page_number > total_pages:
-            raise ValueError(f'page_number {page_number} out of range (1-{total_pages})')
-    except Exception as exc:
-        ai_logger.error('Failed opening PDF for single-page extraction: %s', exc)
-        raise
-
+        
     text = ''
-
-    try:
-        text = (reader.pages[page_number - 1].extract_text() or '').strip()
-        if text and not _looks_like_gibberish(text):
-            ai_logger.info('Single-page extraction succeeded via pypdf: %s page=%d', file_path, page_number)
-            return text
-        if text:
-            ai_logger.warning('Single-page pypdf output appears gibberish: %s page=%d', file_path, page_number)
-    except Exception as exc:
-        ai_logger.warning('Single-page pypdf extraction failed: %s page=%d error=%s', file_path, page_number, exc)
-
     try:
         doc = fitz.open(file_path)
-        try:
-            text = (doc[page_number - 1].get_text() or '').strip()
-        finally:
+        total_pages = len(doc)
+        if page_number > total_pages:
             doc.close()
-        if text and not _looks_like_gibberish(text):
-            ai_logger.info('Single-page extraction succeeded via PyMuPDF: %s page=%d', file_path, page_number)
-            return text
+            raise ValueError(f'page_number {page_number} out of range (1-{total_pages})')
+            
+        text = (doc[page_number - 1].get_text() or '').strip()
+        doc.close()
+        
         if text:
-            ai_logger.warning('Single-page PyMuPDF output appears gibberish: %s page=%d', file_path, page_number)
+            ai_logger.info('Single-page extraction succeeded via PyMuPDF: %s page=%d. Extracted %d chars. Snippet: %s', 
+                           file_path, page_number, len(text), repr(text[:100]))
+            return text
     except Exception as exc:
         ai_logger.warning('Single-page PyMuPDF extraction failed: %s page=%d error=%s', file_path, page_number, exc)
 
-    if not allow_vision:
-        ai_logger.info(
-            'Single-page text layer unresolved and Vision OCR disabled: %s page=%d',
-            file_path,
-            page_number,
-        )
-        return ''
+    try:
+        reader = PdfReader(file_path)
+        if reader.is_encrypted:
+            reader.decrypt("")
+        total_pages = len(reader.pages)
+        if page_number > total_pages:
+            raise ValueError(f'page_number {page_number} out of range (1-{total_pages})')
+            
+        text = (reader.pages[page_number - 1].extract_text() or '').strip()
+        if text:
+            ai_logger.info('Single-page extraction succeeded via pypdf FALLBACK: %s page=%d. Extracted %d chars. Snippet: %s', 
+                           file_path, page_number, len(text), repr(text[:100]))
+            return text
+    except Exception as exc:
+        ai_logger.warning('Single-page pypdf extraction failed: %s page=%d error=%s', file_path, page_number, exc)
 
-    ai_logger.info('Single-page text layer empty; falling back to Vision OCR: %s page=%d', file_path, page_number)
-    return extract_page_vision(file_path, page_number)
+    ai_logger.info('Single-page text layer empty: %s page=%d', file_path, page_number)
+    return text
 
 # Add more LangChain-powered functions as needed.
 

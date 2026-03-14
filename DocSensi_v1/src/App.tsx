@@ -111,6 +111,7 @@ function App() {
           <ModeSelection 
             onModeSelect={handleModeSelect} 
             documentName={currentDocument?.name || ''} 
+            onBackToHome={handleBackToHome}
           />
         );
       
