@@ -428,7 +428,7 @@ def summarize_page(page_content: str) -> dict:
         system_message = prompt_library.prompt_summarize_page
         prompt = ChatPromptTemplate.from_messages([
             ("system", system_message),
-            ("user", page_content),
+            ("user", "{page_content}"),
         ])
         chain = prompt | llm | JsonOutputParser()
         response = chain.invoke({"page_content": page_content[:4000]})

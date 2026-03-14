@@ -94,7 +94,7 @@ export const PageSummary: React.FC<PageSummaryProps> = ({ pages, pageNumber }) =
       {/* Summary Panel */}
       {open && typeof window !== 'undefined' && createPortal(
         <div className="
-          fixed inset-0 z-[100] flex items-center justify-center p-4 sm:p-6
+          fixed top-0 left-0 w-full h-[100dvh] z-[9999] flex items-center justify-center p-4 sm:p-6
           bg-black/60 backdrop-blur-sm
           animate-fade-in
         " onClick={() => setOpen(false)}>

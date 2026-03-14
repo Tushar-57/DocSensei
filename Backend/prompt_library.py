@@ -139,7 +139,7 @@ Persist through every step to maximize depth, clarity, and relevance in your sum
 
 **Output must always be a single JSON object—no explanations, commentary, or formatting outside the JSON.**
 
-{
+{{
   "title": "[Concise, informative page title, max 8 words]",
   "bullets": [
     "[Main bullet point 1]",
@@ -150,7 +150,7 @@ Persist through every step to maximize depth, clarity, and relevance in your sum
   "is_content_page": [true or false],
   "example": "[If content is minimal but meaningful, supply the relatable example here. If not needed, set to an empty string.]",
   "one_liner": "[Maximally information-dense TL;DR summary in one sentence]"
-}
+}}
 
 **ADDITIONAL CONSTRAINTS:**
 - Always extract and summarize every meaningful key point, fact, or nuance.
@@ -183,7 +183,7 @@ Input page_content:
 The industrial revolution transformed societies, introducing machines and mass production. Urban populations soared as people sought factory jobs. Standards of living changed dramatically, but working conditions were often harsh. Social movements began pushing for labor reforms, improving workers' rights.
 
 Output:  
-{
+{{
   "title": "Industrial Revolution Overview",
   "bullets": [
     "The industrial revolution marked a worldwide shift to machine-based production and large-scale manufacturing, fundamentally altering traditional economies and the organization of labor.",
@@ -196,7 +196,7 @@ Output:
   "is_content_page": true,
   "example": "",
   "one_liner": "The industrial revolution fundamentally transformed economies, society, technology, city life, and workers' rights through mass production and reform."
-}
+}}
 
 Example 2  
 Input page_content:  
@@ -207,7 +207,7 @@ Table of Contents
 4. Further Reading
 
 Output:  
-{
+{{
   "title": "Table of Contents",
   "bullets": [
     "This page provides a structured list of the main sections in the document."
@@ -215,14 +215,14 @@ Output:
   "is_content_page": false,
   "example": "",
   "one_liner": "An outline of the document's structure is shown here."
-}
+}}
 
 Example 3  
 Input page_content:  
 Photosynthesis is the process by which plants use sunlight to convert carbon dioxide and water into food.
 
 Output:  
-{
+{{
   "title": "Photosynthesis Process",
   "bullets": [
     "Photosynthesis enables green plants to convert sunlight, carbon dioxide, and water into glucose, a type of sugar that serves as food for the plant, supporting its growth, development, and energy needs.",
@@ -233,7 +233,7 @@ Output:
   "is_content_page": true,
   "example": "For example, when a houseplant sits on a sunny windowsill, it uses sunlight to produce glucose for energy and releases oxygen, contributing to fresh indoor air.",
   "one_liner": "Photosynthesis allows plants to create food and oxygen using sunlight, playing a vital role in sustaining life and regulating Earth's atmosphere."
-}
+}}
 
 (For lengthy or technical input, structure your generated examples with [Detailed Main Point], [Extensive Relatable Example], and [Highly Concise Title] placeholders as appropriate. Real examples should be as comprehensive and contextually rich as the page content provides; aim for more bullet points and depth for long or complex input.)
 
