@@ -53,6 +53,7 @@ def _is_text_gibberish(text: str) -> bool:
         return False
         
     if text.count('\ufffd') > len(text) * 0.05:
+        ai_logger.warning("Gibberish detected: High concentration of Unicode replacement characters '\\ufffd'")
         return True
         
     try:
@@ -63,6 +64,7 @@ def _is_text_gibberish(text: str) -> bool:
         density = len(text) / len(tokens)
         
         if density < 1.5:
+            ai_logger.warning(f"Gibberish detected: Extremely low token density ({density:.2f} < 1.5). Snippet: {repr(text[:50])}")
             return True
             
         alpha_chars = [c for c in text if c.isalpha()]
@@ -74,27 +76,35 @@ def _is_text_gibberish(text: str) -> bool:
         
         # Random all-caps tends to have density < 3.0, while real headers > 3.5
         if upper_ratio > 0.8 and density < 3.0:
+            ai_logger.warning(f"Gibberish detected: All-caps random text (Upper Ratio: {upper_ratio:.2f}, Density: {density:.2f}). Snippet: {repr(text[:50])}")
             return True
             
         # Large blocks of unspaced garbage letters
         if space_ratio < 0.05 and density < 2.5:
+            ai_logger.warning(f"Gibberish detected: Dense unspaced text (Space Ratio: {space_ratio:.2f}, Density: {density:.2f}). Snippet: {repr(text[:50])}")
             return True
             
         # Miscellaneous highly suspicious density
         if density < 2.0:
+            ai_logger.warning(f"Gibberish detected: Suspiciously low token density ({density:.2f} < 2.0). Snippet: {repr(text[:50])}")
             return True
             
         return False
-    except Exception:
+    except Exception as e:
+        ai_logger.error(f"Error in gibberish detection: {e}")
         return False
 
 def _ocr_page_local(page: fitz.Page) -> str:
     try:
+        ai_logger.info('Starting local Tesseract OCR on fallback page...')
+        start_t = time.monotonic()
         pix = page.get_pixmap(matrix=fitz.Matrix(2, 2))
         img_data = pix.tobytes("png")
         img = Image.open(io.BytesIO(img_data))
-        text = pytesseract.image_to_string(img)
-        return text.strip()
+        text = pytesseract.image_to_string(img).strip()
+        elapsed = time.monotonic() - start_t
+        ai_logger.info(f"Local OCR completed in {elapsed:.2f}s. Extracted {len(text)} chars. Snippet: {repr(text[:100])}")
+        return text
     except Exception as e:
         ai_logger.warning('Local OCR failed: %s', e)
         return ''
