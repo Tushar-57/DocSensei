@@ -351,7 +351,7 @@ export const LearningMode: React.FC<LearningModeProps> = ({ document, onBackToHo
       <ThemeToggle />
 
       {/* Header */}
-      <div className="relative z-10 bg-white/10 dark:bg-dark-800/10 backdrop-blur-xl border-b border-white/20 dark:border-dark-700/20">
+      <div className="relative z-30 bg-white/10 dark:bg-dark-800/10 backdrop-blur-xl border-b border-white/20 dark:border-dark-700/20">
         <div className="max-w-7xl mx-auto px-6 py-4">
           <div className="flex items-center justify-between">
             <div className="flex items-center space-x-3 sm:space-x-4 min-w-0">

@@ -109,7 +109,7 @@ export const PageTools: React.FC<PageToolsProps> = ({
       </div>
 
       {open && (
-        <div className="absolute right-0 mt-3 w-[320px] max-w-[92vw] bg-slate-900/85 border border-white/20 backdrop-blur-2xl rounded-2xl shadow-2xl z-50 p-3">
+        <div className="absolute right-0 mt-3 w-[320px] max-w-[92vw] bg-slate-900/85 border border-white/20 backdrop-blur-2xl rounded-2xl shadow-2xl z-[90] p-3">
           <div className="flex items-center justify-between mb-3">
             <h4 className="text-white font-semibold text-sm">Bookmarks</h4>
             <button onClick={() => setOpen(false)} className="text-white/60 hover:text-white">
