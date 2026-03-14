@@ -294,7 +294,7 @@ export const LearningMode: React.FC<LearningModeProps> = ({ document, onBackToHo
         return;
       }
       const quizPayload = {
-        pages: pages.map(p => p.content),
+        pageContent: currentPage?.content || '',
         pageNumber: currentPage.number,
         documentId: document.id,
       };

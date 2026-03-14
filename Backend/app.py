@@ -368,6 +368,7 @@ ai_logger = get_logger('AI')
 UPLOAD_FOLDER = 'uploads'
 ALLOWED_EXTENSIONS = {'pdf', 'doc', 'docx'}
 EXTRACTION_CACHE_SUFFIX = '.pages.json'
+UNRESOLVED_TEXT_LAYER_SENTINEL = '[[DOCSENSEI_UNRESOLVED_TEXT_LAYER]]'
 
 app = Flask(__name__)
 CORS(app, resources={r"/*": {"origins": "*"}}, supports_credentials=True)
@@ -466,6 +467,22 @@ def is_successful_extraction(pages):
         and not any(page.startswith('[Error ') for page in pages)
     )
 
+
+def is_unresolved_text_marker(text):
+    return isinstance(text, str) and text == UNRESOLVED_TEXT_LAYER_SENTINEL
+
+
+def to_client_page_text(text):
+    if is_unresolved_text_marker(text):
+        return ''
+    return text if isinstance(text, str) else ''
+
+
+def to_client_pages(pages):
+    if not isinstance(pages, list):
+        return []
+    return [to_client_page_text(page) for page in pages]
+
 # Serve uploaded files
 @app.route('/uploads/<path:filename>')
 def uploaded_file(filename):
@@ -562,7 +579,7 @@ def extract_content():
             len(cached_pages),
             time.monotonic() - endpoint_start,
         )
-        return jsonify({'pages': cached_pages, 'cached': True})
+        return jsonify({'pages': to_client_pages(cached_pages), 'cached': True})
 
     ai_logger.info('Extracting content from %s', file_path)
     content = extract_text_from_pdf(file_path)
@@ -583,21 +600,32 @@ def extract_content():
 
 @app.route('/generate-quiz', methods=['POST'])
 def generate_quiz():
-    data = request.json
-    ai_logger.info('[generate-quiz] Received request body: %s', data)
+    data = request.json or {}
     pages = data.get('pages')
+    page_content = data.get('pageContent')
     page_number = data.get('pageNumber')
     document_id = data.get('documentId')
-    if not pages or not isinstance(pages, list):
-        ai_logger.error('No pages provided for quiz generation. Got: %s', pages)
-        return jsonify({'error': 'No pages provided'}), 400
-    try:
+
+    ai_logger.info(
+        '[generate-quiz] Request metadata: documentId=%s pageNumber=%s hasPageContent=%s pagesCount=%s',
+        document_id,
+        page_number,
+        bool(isinstance(page_content, str) and page_content.strip()),
+        len(pages) if isinstance(pages, list) else 0,
+    )
+
+    if not (isinstance(page_content, str) and page_content.strip()):
+        if not pages or not isinstance(pages, list):
+            ai_logger.error('No page content provided for quiz generation')
+            return jsonify({'error': 'No page content provided'}), 400
+
         idx = int(page_number) - 1 if page_number else 0
         if idx < 0 or idx >= len(pages):
             page_content = pages[0]
         else:
             page_content = pages[idx]
 
+    try:
         # Auto-skip pages that are too short to quiz (< 50 words)
         # Saves an LLM call and avoids forcing quizzes on section breaks / cover pages
         word_count = len(page_content.split()) if page_content else 0
@@ -655,7 +683,7 @@ def get_sample_document():
 def extract_page():
     """Extract a single page on demand (text layer first, OCR fallback)."""
     endpoint_start = time.monotonic()
-    data = request.json
+    data = request.json or {}
     file_url = data.get('fileUrl')
     page_number = data.get('pageNumber')
     if not file_url or not page_number:
@@ -671,17 +699,32 @@ def extract_page():
     if not os.path.exists(file_path):
         return jsonify({'error': 'File not found'}), 404
 
+    cached_pages = load_extraction_cache(file_path)
+    if cached_pages is not None and 1 <= page_number_int <= len(cached_pages):
+        cached_text = cached_pages[page_number_int - 1]
+        if isinstance(cached_text, str) and cached_text.strip() and not is_unresolved_text_marker(cached_text):
+            ai_logger.info(
+                'Single-page extraction served from cache: file=%s page=%s chars=%d elapsed=%.2fs',
+                file_path,
+                page_number_int,
+                len(cached_text),
+                time.monotonic() - endpoint_start,
+            )
+            return jsonify({'text': cached_text, 'pageNumber': page_number_int, 'source': 'cache'})
+
     ai_logger.info('Single-page extraction requested: file=%s page=%s', file_path, page_number_int)
     try:
         text = extract_page_text(file_path, page_number_int)
 
-        cached_pages = load_extraction_cache(file_path)
         if (
             cached_pages is not None
             and 1 <= page_number_int <= len(cached_pages)
             and isinstance(text, str)
             and text.strip()
-            and not cached_pages[page_number_int - 1].strip()
+            and (
+                not cached_pages[page_number_int - 1].strip()
+                or is_unresolved_text_marker(cached_pages[page_number_int - 1])
+            )
         ):
             cached_pages[page_number_int - 1] = text
             save_extraction_cache(file_path, cached_pages)
@@ -769,13 +812,22 @@ def extract_pages_batch():
             idx = page_no - 1
             existing_text = cached_pages[idx] if idx < len(cached_pages) else ''
 
+            if is_unresolved_text_marker(existing_text):
+                result_pages.append({'pageNumber': page_no, 'text': '', 'source': 'unresolved'})
+                continue
+
             if isinstance(existing_text, str) and existing_text.strip():
-                result_pages.append({'pageNumber': page_no, 'text': existing_text, 'source': 'cache'})
+                result_pages.append({'pageNumber': page_no, 'text': to_client_page_text(existing_text), 'source': 'cache'})
                 continue
 
             page_text = extract_page_text(file_path, page_no, allow_vision=not text_layer_only)
-            cached_pages[idx] = page_text or ''
-            result_pages.append({'pageNumber': page_no, 'text': cached_pages[idx], 'source': 'hydrated'})
+            if isinstance(page_text, str) and page_text.strip():
+                cached_pages[idx] = page_text
+                result_pages.append({'pageNumber': page_no, 'text': page_text, 'source': 'hydrated'})
+            else:
+                # Mark unresolved text-layer pages so later batch passes skip redundant work.
+                cached_pages[idx] = UNRESOLVED_TEXT_LAYER_SENTINEL
+                result_pages.append({'pageNumber': page_no, 'text': '', 'source': 'unresolved'})
 
         save_extraction_cache(file_path, cached_pages)
         ai_logger.info(
