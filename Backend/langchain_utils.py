@@ -34,6 +34,14 @@ if os.environ.get("LANGSMITH_TRACING", "false").lower() == "true":
 
 
 _openai_client = OpenAI()
+INITIAL_EXTRACTION_TIME_BUDGET_SEC = max(
+    5.0,
+    float(os.environ.get("INITIAL_EXTRACTION_TIME_BUDGET_SEC", "20")),
+)
+INITIAL_EXTRACTION_MAX_PAGES = max(
+    0,
+    int(os.environ.get("INITIAL_EXTRACTION_MAX_PAGES", "0")),
+)
 
 
 def _ocr_page_vision(page: fitz.Page) -> str:
@@ -88,8 +96,31 @@ def extract_text_from_pdf(file_path: str) -> list:
             non_empty_pages = 0
             fallback_pages = 0
             fitz_doc = None
+            deferred_pages = 0
 
             for idx, page in enumerate(reader.pages, start=1):
+                if idx > 1:
+                    elapsed = time.monotonic() - start_time
+                    hit_time_budget = elapsed >= INITIAL_EXTRACTION_TIME_BUDGET_SEC
+                    hit_page_budget = (
+                        INITIAL_EXTRACTION_MAX_PAGES > 0
+                        and (idx - 1) >= INITIAL_EXTRACTION_MAX_PAGES
+                    )
+                    if hit_time_budget or hit_page_budget:
+                        deferred_pages = total_pages - (idx - 1)
+                        ai_logger.info(
+                            'Initial extraction budget reached for %s at page %d/%d '
+                            '(elapsed=%.2fs, max_time=%.2fs, max_pages=%d); deferring %d pages to /extract-page',
+                            file_path,
+                            idx - 1,
+                            total_pages,
+                            elapsed,
+                            INITIAL_EXTRACTION_TIME_BUDGET_SEC,
+                            INITIAL_EXTRACTION_MAX_PAGES,
+                            deferred_pages,
+                        )
+                        break
+
                 page_text = ''
                 try:
                     page_text = (page.extract_text() or '').strip()
@@ -130,6 +161,9 @@ def extract_text_from_pdf(file_path: str) -> list:
                         fallback_pages,
                     )
 
+            if deferred_pages > 0:
+                pages.extend([''] * deferred_pages)
+
             if fitz_doc is not None:
                 fitz_doc.close()
 
@@ -155,6 +189,51 @@ def extract_text_from_pdf(file_path: str) -> list:
         except (OSError, UnicodeDecodeError) as e:
             ai_logger.error('Error reading file: %s', e)
             return [f"[Error reading file: {e}]"]
+
+
+def extract_page_text(file_path: str, page_number: int) -> str:
+    """
+    Extract a single page with layered fallbacks:
+    1) pypdf text layer, 2) PyMuPDF text layer, 3) Vision OCR.
+    """
+    ai_logger.info('Single-page extraction requested: %s page=%d', file_path, page_number)
+
+    if page_number < 1:
+        raise ValueError('page_number must be >= 1')
+
+    try:
+        reader = PdfReader(file_path)
+        total_pages = len(reader.pages)
+        if page_number > total_pages:
+            raise ValueError(f'page_number {page_number} out of range (1-{total_pages})')
+    except Exception as exc:
+        ai_logger.error('Failed opening PDF for single-page extraction: %s', exc)
+        raise
+
+    text = ''
+
+    try:
+        text = (reader.pages[page_number - 1].extract_text() or '').strip()
+        if text:
+            ai_logger.info('Single-page extraction succeeded via pypdf: %s page=%d', file_path, page_number)
+            return text
+    except Exception as exc:
+        ai_logger.warning('Single-page pypdf extraction failed: %s page=%d error=%s', file_path, page_number, exc)
+
+    try:
+        doc = fitz.open(file_path)
+        try:
+            text = (doc[page_number - 1].get_text() or '').strip()
+        finally:
+            doc.close()
+        if text:
+            ai_logger.info('Single-page extraction succeeded via PyMuPDF: %s page=%d', file_path, page_number)
+            return text
+    except Exception as exc:
+        ai_logger.warning('Single-page PyMuPDF extraction failed: %s page=%d error=%s', file_path, page_number, exc)
+
+    ai_logger.info('Single-page text layer empty; falling back to Vision OCR: %s page=%d', file_path, page_number)
+    return extract_page_vision(file_path, page_number)
 
 # Add more LangChain-powered functions as needed.
 

@@ -8,7 +8,7 @@ from urllib.parse import urlparse
 from werkzeug.utils import secure_filename
 from werkzeug.exceptions import RequestEntityTooLarge
 
-from langchain_utils import extract_text_from_pdf, extract_page_vision, mcq_quiz_generator, chat_with_document, summarize_page
+from langchain_utils import extract_text_from_pdf, extract_page_text, mcq_quiz_generator, chat_with_document, summarize_page
 from logger import get_logger
 from dotenv import load_dotenv
 
@@ -643,7 +643,7 @@ def get_sample_document():
 
 @app.route('/extract-page', methods=['POST'])
 def extract_page():
-    """Vision-OCR a single image page on demand. Response is cached server-side."""
+    """Extract a single page on demand (text layer first, OCR fallback)."""
     endpoint_start = time.monotonic()
     data = request.json
     file_url = data.get('fileUrl')
@@ -651,24 +651,42 @@ def extract_page():
     if not file_url or not page_number:
         return jsonify({'error': 'fileUrl and pageNumber required'}), 400
 
+    try:
+        page_number_int = int(page_number)
+    except (TypeError, ValueError):
+        return jsonify({'error': 'pageNumber must be an integer'}), 400
+
     filename = file_url.split('/')[-1]
     file_path = os.path.join(app.config['UPLOAD_FOLDER'], filename)
     if not os.path.exists(file_path):
         return jsonify({'error': 'File not found'}), 404
 
-    ai_logger.info('Vision extraction requested: file=%s page=%s', file_path, page_number)
+    ai_logger.info('Single-page extraction requested: file=%s page=%s', file_path, page_number_int)
     try:
-        text = extract_page_vision(file_path, int(page_number))
+        text = extract_page_text(file_path, page_number_int)
+
+        cached_pages = load_extraction_cache(file_path)
+        if (
+            cached_pages is not None
+            and 1 <= page_number_int <= len(cached_pages)
+            and isinstance(text, str)
+            and text.strip()
+            and not cached_pages[page_number_int - 1].strip()
+        ):
+            cached_pages[page_number_int - 1] = text
+            save_extraction_cache(file_path, cached_pages)
+            ai_logger.info('Updated extraction cache with single-page content: file=%s page=%s', file_path, page_number_int)
+
         ai_logger.info(
-            'Vision extraction complete: file=%s page=%s chars=%d elapsed=%.2fs',
+            'Single-page extraction complete: file=%s page=%s chars=%d elapsed=%.2fs',
             file_path,
-            page_number,
+            page_number_int,
             len(text or ''),
             time.monotonic() - endpoint_start,
         )
-        return jsonify({'text': text, 'pageNumber': page_number})
+        return jsonify({'text': text, 'pageNumber': page_number_int})
     except Exception as e:
-        ai_logger.error('Vision extraction failed for page %s: %s', page_number, e)
+        ai_logger.error('Single-page extraction failed for page %s: %s', page_number_int, e)
         return jsonify({'error': str(e)}), 500
 
 

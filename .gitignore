@@ -1,0 +1,14 @@
+# OS artifacts
+.DS_Store
+
+# Python local artifacts
+__pycache__/
+*.py[cod]
+Backend/__pycache__/
+
+# Local environment files
+.env
+Backend/.env
+
+# Local uploaded/test documents
+Backend/uploads/
