@@ -3,8 +3,10 @@ from flask_cors import CORS
 import hashlib
 import json
 import os
+import time
 from urllib.parse import urlparse
 from werkzeug.utils import secure_filename
+from werkzeug.exceptions import RequestEntityTooLarge
 
 from langchain_utils import extract_text_from_pdf, extract_page_vision, mcq_quiz_generator, chat_with_document, summarize_page
 from logger import get_logger
@@ -370,8 +372,27 @@ EXTRACTION_CACHE_SUFFIX = '.pages.json'
 app = Flask(__name__)
 CORS(app, resources={r"/*": {"origins": "*"}}, supports_credentials=True)
 app.config['UPLOAD_FOLDER'] = UPLOAD_FOLDER
+app.config['MAX_CONTENT_LENGTH'] = 100 * 1024 * 1024  # 100 MB
 
 os.makedirs(UPLOAD_FOLDER, exist_ok=True)
+
+
+@app.before_request
+def log_request_start():
+    system_logger.info(
+        'Incoming request: method=%s path=%s content_type=%s content_length=%s',
+        request.method,
+        request.path,
+        request.content_type,
+        request.content_length,
+    )
+
+
+@app.errorhandler(RequestEntityTooLarge)
+def handle_file_too_large(_error):
+    max_size_mb = app.config['MAX_CONTENT_LENGTH'] // (1024 * 1024)
+    system_logger.error('Upload rejected: payload too large (limit=%dMB)', max_size_mb)
+    return jsonify({'error': f'File is too large. Maximum allowed size is {max_size_mb}MB.'}), 413
  
 def allowed_file(filename):
     return '.' in filename and \
@@ -442,55 +463,112 @@ def uploaded_file(filename):
 
 @app.route('/upload', methods=['POST'])
 def upload_file():
+    endpoint_start = time.monotonic()
+    system_logger.info('Upload handler started')
+
+    if request.content_length:
+        system_logger.info(
+            'Upload request size: %.2f MB',
+            request.content_length / (1024 * 1024),
+        )
+
     if 'file' not in request.files:
         system_logger.error('No file part in upload request')
         return jsonify({'error': 'No file part'}), 400
+
     file = request.files['file']
     if file.filename == '':
         system_logger.error('No selected file in upload request')
         return jsonify({'error': 'No selected file'}), 400
+
     if file and allowed_file(file.filename):
         original_name = secure_filename(file.filename)
         _, extension = os.path.splitext(original_name)
+        system_logger.info('Upload validated: original_name=%s extension=%s', original_name, extension.lower())
+
+        hash_start = time.monotonic()
         file_hash = hash_uploaded_file(file)
+        system_logger.info('Computed upload hash in %.2fs', time.monotonic() - hash_start)
+
         stored_filename = f'{file_hash}{extension.lower()}'
         file_path = os.path.join(app.config['UPLOAD_FOLDER'], stored_filename)
         file_already_exists = os.path.exists(file_path)
+
         if not file_already_exists:
+            save_start = time.monotonic()
             file.save(file_path)
-            system_logger.info('File uploaded: %s -> %s', original_name, stored_filename)
+            saved_size_bytes = os.path.getsize(file_path)
+            system_logger.info(
+                'File uploaded: %s -> %s (size=%.2f MB, save_elapsed=%.2fs)',
+                original_name,
+                stored_filename,
+                saved_size_bytes / (1024 * 1024),
+                time.monotonic() - save_start,
+            )
         else:
             system_logger.info('Duplicate upload reused existing file: %s -> %s', original_name, stored_filename)
+
         file_url = url_for('uploaded_file', filename=stored_filename, _external=True)
+        system_logger.info('Upload handler completed in %.2fs', time.monotonic() - endpoint_start)
         return jsonify({'fileUrl': file_url, 'cached': file_already_exists})
+
     system_logger.error('Invalid file type uploaded')
     return jsonify({'error': 'Invalid file type'}), 400
 
 @app.route('/extract', methods=['POST'])
 def extract_content():
+    endpoint_start = time.monotonic()
     data = request.json or {}
     file_url = data.get('fileUrl')
     if not file_url:
         system_logger.error('Invalid fileUrl received for extraction')
         return jsonify({'error': 'Invalid fileUrl'}), 400
+
     file_path = resolve_uploaded_file_path(file_url)
     if not file_path:
         system_logger.error('Could not resolve file path from fileUrl: %s', file_url)
         return jsonify({'error': 'Invalid fileUrl'}), 400
+
     if not os.path.exists(file_path):
         system_logger.error('File not found for extraction: %s', file_path)
         return jsonify({'error': 'File not found'}), 404
 
+    try:
+        file_size_bytes = os.path.getsize(file_path)
+    except OSError:
+        file_size_bytes = 0
+
+    ai_logger.info(
+        'Extraction request resolved: path=%s size=%.2f MB',
+        file_path,
+        file_size_bytes / (1024 * 1024) if file_size_bytes else 0,
+    )
+
     cached_pages = load_extraction_cache(file_path)
     if cached_pages is not None:
-        ai_logger.info('Using cached extraction for %s', file_path)
+        ai_logger.info(
+            'Using cached extraction for %s (pages=%d, elapsed=%.2fs)',
+            file_path,
+            len(cached_pages),
+            time.monotonic() - endpoint_start,
+        )
         return jsonify({'pages': cached_pages, 'cached': True})
 
     ai_logger.info('Extracting content from %s', file_path)
     content = extract_text_from_pdf(file_path)
+
     if is_successful_extraction(content):
         save_extraction_cache(file_path, content)
-    ai_logger.info('Extraction complete for %s', file_path)
+        ai_logger.info('Extraction cache saved for %s (pages=%d)', file_path, len(content))
+    else:
+        ai_logger.warning('Extraction returned errors for %s; skipping cache write', file_path)
+
+    ai_logger.info(
+        'Extraction complete for %s (pages=%d, elapsed=%.2fs)',
+        file_path,
+        len(content),
+        time.monotonic() - endpoint_start,
+    )
     return jsonify({'pages': content, 'cached': False})
 
 @app.route('/generate-quiz', methods=['POST'])
@@ -566,17 +644,28 @@ def get_sample_document():
 @app.route('/extract-page', methods=['POST'])
 def extract_page():
     """Vision-OCR a single image page on demand. Response is cached server-side."""
+    endpoint_start = time.monotonic()
     data = request.json
     file_url = data.get('fileUrl')
     page_number = data.get('pageNumber')
     if not file_url or not page_number:
         return jsonify({'error': 'fileUrl and pageNumber required'}), 400
+
     filename = file_url.split('/')[-1]
     file_path = os.path.join(app.config['UPLOAD_FOLDER'], filename)
     if not os.path.exists(file_path):
         return jsonify({'error': 'File not found'}), 404
+
+    ai_logger.info('Vision extraction requested: file=%s page=%s', file_path, page_number)
     try:
         text = extract_page_vision(file_path, int(page_number))
+        ai_logger.info(
+            'Vision extraction complete: file=%s page=%s chars=%d elapsed=%.2fs',
+            file_path,
+            page_number,
+            len(text or ''),
+            time.monotonic() - endpoint_start,
+        )
         return jsonify({'text': text, 'pageNumber': page_number})
     except Exception as e:
         ai_logger.error('Vision extraction failed for page %s: %s', page_number, e)

@@ -14,6 +14,7 @@ import base64
 import fitz  # PyMuPDF
 from openai import OpenAI
 from pypdf import PdfReader
+import time
 
 
 load_dotenv()
@@ -73,17 +74,77 @@ def extract_text_from_pdf(file_path: str) -> list:
     Image-only pages return empty string — call extract_page_vision() lazily for those.
     Returns a list of page texts.
     """
+    start_time = time.monotonic()
     ai_logger.info('Starting extraction for %s', file_path)
     if file_path.lower().endswith('.pdf'):
         try:
             reader = PdfReader(file_path)
             if reader.is_encrypted:
                 reader.decrypt("")
-            pages = [(page.extract_text() or '').strip() for page in reader.pages]
-            ai_logger.info('Extracted %d pages from PDF: %s', len(pages), file_path)
+            total_pages = len(reader.pages)
+            ai_logger.info('PDF opened successfully: %s (pages=%d)', file_path, total_pages)
+
+            pages = []
+            non_empty_pages = 0
+            fallback_pages = 0
+            fitz_doc = None
+
+            for idx, page in enumerate(reader.pages, start=1):
+                page_text = ''
+                try:
+                    page_text = (page.extract_text() or '').strip()
+                except Exception as page_exc:
+                    fallback_pages += 1
+                    ai_logger.warning(
+                        'pypdf text extraction failed on page %d/%d for %s: %s; falling back to PyMuPDF text layer',
+                        idx,
+                        total_pages,
+                        file_path,
+                        page_exc,
+                    )
+                    if fitz_doc is None:
+                        fitz_doc = fitz.open(file_path)
+                    try:
+                        page_text = fitz_doc[idx - 1].get_text().strip()
+                    except Exception as fitz_exc:
+                        ai_logger.error(
+                            'PyMuPDF fallback also failed on page %d/%d for %s: %s',
+                            idx,
+                            total_pages,
+                            file_path,
+                            fitz_exc,
+                        )
+                        page_text = ''
+
+                if page_text:
+                    non_empty_pages += 1
+                pages.append(page_text)
+
+                if idx <= 3 or idx == total_pages or idx % 25 == 0:
+                    ai_logger.info(
+                        'Extraction progress %s: page %d/%d (non_empty=%d, fallback=%d)',
+                        file_path,
+                        idx,
+                        total_pages,
+                        non_empty_pages,
+                        fallback_pages,
+                    )
+
+            if fitz_doc is not None:
+                fitz_doc.close()
+
+            elapsed = time.monotonic() - start_time
+            ai_logger.info(
+                'Extracted %d pages from PDF: %s (non_empty=%d, fallback=%d, elapsed=%.2fs)',
+                len(pages),
+                file_path,
+                non_empty_pages,
+                fallback_pages,
+                elapsed,
+            )
             return pages
         except Exception as e:
-            ai_logger.error('Error extracting PDF: %s', e)
+            ai_logger.exception('Error extracting PDF %s: %s', file_path, e)
             return [f"[Error extracting PDF: {e}]"]
     else:
         try:
