@@ -43,6 +43,35 @@ INITIAL_EXTRACTION_MAX_PAGES = max(
     int(os.environ.get("INITIAL_EXTRACTION_MAX_PAGES", "0")),
 )
 
+import tiktoken
+import pytesseract
+from PIL import Image
+import io
+
+def _is_text_gibberish(text: str) -> bool:
+    if not text or len(text) < 50:
+        return False
+    try:
+        enc = tiktoken.get_encoding("cl100k_base")
+        tokens = enc.encode(text)
+        if len(tokens) == 0:
+            return True
+        density = len(text) / len(tokens)
+        return density < 1.5
+    except Exception:
+        return False
+
+def _ocr_page_local(page: fitz.Page) -> str:
+    try:
+        pix = page.get_pixmap(matrix=fitz.Matrix(2, 2))
+        img_data = pix.tobytes("png")
+        img = Image.open(io.BytesIO(img_data))
+        text = pytesseract.image_to_string(img)
+        return text.strip()
+    except Exception as e:
+        ai_logger.warning('Local OCR failed: %s', e)
+        return ''
+
 
 def extract_text_from_pdf(file_path: str) -> list:
     """
@@ -76,6 +105,11 @@ def extract_text_from_pdf(file_path: str) -> list:
                             break
                     
                     page_text = fitz_doc[idx].get_text().strip()
+                    
+                    if page_text and _is_text_gibberish(page_text):
+                        ai_logger.warning('Page %d/%d PyMuPDF extraction flagged as gibberish. Ignoring text.', idx + 1, total_pages)
+                        page_text = ""
+
                     if page_text:
                         ai_logger.info('Page %d/%d extracted via PyMuPDF. Length: %d chars. Snippet: %s', 
                                        idx + 1, total_pages, len(page_text), repr(page_text[:100]))
@@ -85,16 +119,27 @@ def extract_text_from_pdf(file_path: str) -> list:
                             reader = PdfReader(file_path)
                             if reader.is_encrypted:
                                 reader.decrypt("")
-                            page_text = (reader.pages[idx].extract_text() or '').strip()
-                            if page_text:
+                            pypdf_text = (reader.pages[idx].extract_text() or '').strip()
+                            
+                            if pypdf_text and _is_text_gibberish(pypdf_text):
+                                ai_logger.warning('Page %d/%d pypdf fallback flagged as gibberish too. Ignoring.', idx + 1, total_pages)
+                                pypdf_text = ""
+                                
+                            if pypdf_text:
+                                page_text = pypdf_text
                                 ai_logger.info('Page %d/%d extracted via pypdf FALLBACK. Length: %d chars. Snippet: %s', 
                                                idx + 1, total_pages, len(page_text), repr(page_text[:100]))
                                 fallback_pages += 1
                             else:
-                                ai_logger.warning('Page %d/%d is EMPTY after both PyMuPDF and pypdf extraction.', 
-                                                  idx + 1, total_pages)
+                                ocr_text = _ocr_page_local(fitz_doc[idx])
+                                if ocr_text:
+                                    page_text = ocr_text
+                                    ai_logger.info('Page %d/%d extracted via TESSERACT OCR. Length: %d chars.', idx + 1, total_pages, len(page_text))
+                                    fallback_pages += 1
+                                else:
+                                    ai_logger.warning('Page %d/%d is EMPTY after all fallbacks.', idx + 1, total_pages)
                         except Exception as e:
-                            ai_logger.warning('pypdf fallback failed for page %d: %s', idx + 1, e)
+                            ai_logger.warning('Fallback chain failed for page %d: %s', idx + 1, e)
                     
                     if page_text:
                         non_empty_pages += 1
@@ -122,6 +167,10 @@ def extract_text_from_pdf(file_path: str) -> list:
                             break
                             
                     page_text = (page.extract_text() or '').strip()
+                    if page_text and _is_text_gibberish(page_text):
+                        ai_logger.warning('Page %d/%d pypdf absolute fallback flagged as gibberish.', idx + 1, total_pages)
+                        page_text = ""
+
                     if page_text:
                         ai_logger.info('Page %d/%d extracted entirely via pypdf fallback. Length: %d chars. Snippet: %s', 
                                        idx + 1, total_pages, len(page_text), repr(page_text[:100]))
@@ -173,12 +222,18 @@ def extract_page_text(file_path: str, page_number: int, allow_vision: bool = Tru
             raise ValueError(f'page_number {page_number} out of range (1-{total_pages})')
             
         text = (doc[page_number - 1].get_text() or '').strip()
-        doc.close()
         
+        if text and _is_text_gibberish(text):
+            ai_logger.warning('Single-page PyMuPDF extraction flagged as gibberish.')
+            text = ""
+
         if text:
             ai_logger.info('Single-page extraction succeeded via PyMuPDF: %s page=%d. Extracted %d chars. Snippet: %s', 
                            file_path, page_number, len(text), repr(text[:100]))
+            doc.close()
             return text
+            
+        fallback_page = doc[page_number - 1]
     except Exception as exc:
         ai_logger.warning('Single-page PyMuPDF extraction failed: %s page=%d error=%s', file_path, page_number, exc)
 
@@ -191,15 +246,26 @@ def extract_page_text(file_path: str, page_number: int, allow_vision: bool = Tru
             raise ValueError(f'page_number {page_number} out of range (1-{total_pages})')
             
         text = (reader.pages[page_number - 1].extract_text() or '').strip()
+        
+        if text and _is_text_gibberish(text):
+            ai_logger.warning('pypdf extracted gibberish for single page %d in %s, discarding.', page_number, file_path)
+            text = ""
+
         if text:
-            ai_logger.info('Single-page extraction succeeded via pypdf FALLBACK: %s page=%d. Extracted %d chars. Snippet: %s', 
+            ai_logger.info('Single-page extraction succeeded via pypdf FALLBACK: %s page=%d. Extracted %d chars. Snippet: %s',
                            file_path, page_number, len(text), repr(text[:100]))
             return text
     except Exception as exc:
         ai_logger.warning('Single-page pypdf extraction failed: %s page=%d error=%s', file_path, page_number, exc)
 
-    ai_logger.info('Single-page text layer empty: %s page=%d', file_path, page_number)
-    return text
+    if not text and fallback_page:
+        ai_logger.info('Single-page text layer empty or gibberish, performing OCR: %s page=%d', file_path, page_number)
+        text = _ocr_page_local(fallback_page)
+        
+        if text:
+            return text
+
+    ai_logger.info('Single-page text layer empty and no OCR: %s page=%d', file_path, page_number)
 
 # Add more LangChain-powered functions as needed.
 
