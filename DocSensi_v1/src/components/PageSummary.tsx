@@ -1,5 +1,6 @@
 import React, { useState } from 'react';
 import { FileText, X, Sparkles, Loader2 } from 'lucide-react';
+import { toBackendUrl } from '../utils/api';
 
 interface PageSummaryProps {
   pages: { content: string }[];
@@ -30,7 +31,7 @@ export const PageSummary: React.FC<PageSummaryProps> = ({ pages, pageNumber }) =
     setError(null);
     setOpen(true);
     try {
-      const res = await fetch(`${import.meta.env.VITE_BACKEND_URL}/summarize`, {
+      const res = await fetch(toBackendUrl('/summarize'), {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({

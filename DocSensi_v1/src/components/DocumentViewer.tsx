@@ -1,7 +1,7 @@
 
 import React, { useState, useRef, useEffect } from 'react';
 import { Page as PageType, Document as DocType } from '../types';
-import { CheckCircle, BookOpen } from 'lucide-react';
+import { CheckCircle, BookOpen, AlertTriangle, RefreshCw, Home } from 'lucide-react';
 import { Document as PdfDocument, Page as PdfPage } from 'react-pdf';
 
 interface DocumentViewerProps {
@@ -11,6 +11,7 @@ interface DocumentViewerProps {
   pageNumber?: number;
   onPageChange?: (page: number) => void;
   isTextLoading?: boolean;
+  onBackToHome?: () => void;
 }
 
 export const DocumentViewer: React.FC<DocumentViewerProps> = ({
@@ -20,9 +21,12 @@ export const DocumentViewer: React.FC<DocumentViewerProps> = ({
   pageNumber,
   onPageChange,
   isTextLoading = false,
+  onBackToHome,
 }) => {
   // Toggle state: true = show rendered (PDF), false = show extracted text
   const [showRendered, setShowRendered] = useState(true);
+  const [pdfLoadError, setPdfLoadError] = useState<string | null>(null);
+  const [pdfRenderKey, setPdfRenderKey] = useState(0);
 
   // Measure a non-scrolling wrapper so scrollbar appearance does not change page width.
   const pdfViewportRef = useRef<HTMLDivElement>(null);
@@ -46,6 +50,15 @@ export const DocumentViewer: React.FC<DocumentViewerProps> = ({
   // If fileUrl is present, render the file (PDF/Word)
   const fileUrl = document?.fileUrl;
   const docType = document?.type;
+
+  useEffect(() => {
+    setPdfLoadError(null);
+  }, [fileUrl, page.number]);
+
+  const handleRetryPdf = () => {
+    setPdfLoadError(null);
+    setPdfRenderKey((v) => v + 1);
+  };
 
   return (
     <div className="
@@ -102,6 +115,39 @@ export const DocumentViewer: React.FC<DocumentViewerProps> = ({
           {/* Toggle logic: for PDFs, show either rendered or extracted text. For Word, show link. For others, show text. */}
           {fileUrl && docType === 'PDF' ? (
             showRendered ? (
+              pdfLoadError ? (
+                <div className="extracted-text-container dark:bg-dark-700/80 border dark:border-dark-600 flex items-center justify-center min-h-[300px]">
+                  <div className="text-center max-w-md px-4">
+                    <AlertTriangle className="w-9 h-9 text-amber-300 mx-auto mb-3" />
+                    <p className="text-white font-semibold mb-1">Failed to load PDF preview</p>
+                    <p className="text-white/70 text-sm mb-4">{pdfLoadError}</p>
+                    <div className="flex flex-wrap items-center justify-center gap-2">
+                      <button
+                        onClick={handleRetryPdf}
+                        className="inline-flex items-center gap-1.5 px-3 py-2 rounded-lg bg-blue-500/80 hover:bg-blue-500 text-white text-sm"
+                      >
+                        <RefreshCw className="w-4 h-4" />
+                        Retry PDF
+                      </button>
+                      <button
+                        onClick={() => setShowRendered(false)}
+                        className="px-3 py-2 rounded-lg bg-white/15 hover:bg-white/25 text-white text-sm"
+                      >
+                        Show Extracted Text
+                      </button>
+                      {onBackToHome && (
+                        <button
+                          onClick={onBackToHome}
+                          className="inline-flex items-center gap-1.5 px-3 py-2 rounded-lg bg-rose-500/80 hover:bg-rose-500 text-white text-sm"
+                        >
+                          <Home className="w-4 h-4" />
+                          Restart Flow
+                        </button>
+                      )}
+                    </div>
+                  </div>
+                </div>
+              ) : (
               <div ref={pdfViewportRef} className="pdf-viewer-viewport">
                 <div className="pdf-viewer-scroller">
                   <div
@@ -109,8 +155,13 @@ export const DocumentViewer: React.FC<DocumentViewerProps> = ({
                     style={{ minHeight: Math.max(320, Math.round(pdfWidth * pageAspectRatio)) }}
                   >
                     <PdfDocument
+                      key={pdfRenderKey}
                       file={fileUrl}
                       loading={<div className="pdf-page-loading">Loading page...</div>}
+                      onLoadError={(error) => {
+                        const message = error instanceof Error ? error.message : 'Unknown PDF error';
+                        setPdfLoadError(message);
+                      }}
                       onLoadSuccess={({ numPages }) => {
                         if (typeof page.number === 'number' && page.number > numPages && onPageChange) {
                           onPageChange(1);
@@ -134,6 +185,7 @@ export const DocumentViewer: React.FC<DocumentViewerProps> = ({
                   </div>
                 </div>
               </div>
+              )
             ) : (
               isTextLoading && !page.content.trim() ? (
                 <div className="extracted-text-container dark:bg-dark-700/80 border dark:border-dark-600 flex items-center justify-center min-h-[300px]">

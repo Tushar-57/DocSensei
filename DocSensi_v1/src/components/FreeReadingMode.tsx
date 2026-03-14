@@ -6,6 +6,7 @@ import { ChatBot } from './ChatBot';
 import { ThemeToggle } from './ThemeToggle';
 import { PageSummary } from './PageSummary';
 import { PageTools, PageBookmark } from './PageTools';
+import { toBackendUrl } from '../utils/api';
 
 interface FreeReadingModeProps {
   document: Document;
@@ -78,10 +79,10 @@ export const FreeReadingMode: React.FC<FreeReadingModeProps> = ({ document, onBa
     if (showLoaderForCurrent) setIsBatchLoading(true);
 
     try {
-      const res = await fetch(`${import.meta.env.VITE_BACKEND_URL}/extract-pages`, {
+      const res = await fetch(toBackendUrl('/extract-pages'), {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ fileUrl: document.fileUrl, startPage, batchSize: BATCH_SIZE }),
+        body: JSON.stringify({ fileUrl: document.fileUrl, startPage, batchSize: BATCH_SIZE, textLayerOnly: true }),
       });
       const data = await res.json();
       if (!res.ok || !Array.isArray(data.pages)) return;
@@ -97,6 +98,23 @@ export const FreeReadingMode: React.FC<FreeReadingModeProps> = ({ document, onBa
 
       if (Object.keys(nextOverrides).length > 0) {
         setContentOverrides(prev => ({ ...prev, ...nextOverrides }));
+      }
+
+      const resolvedAfterBatch = isPageResolved(startIndex) || !!nextOverrides[startIndex]?.trim();
+      if (showLoaderForCurrent && !resolvedAfterBatch) {
+        const currentPageNo = rawPages[startIndex]?.number;
+        if (currentPageNo) {
+          const singleRes = await fetch(toBackendUrl('/extract-page'), {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ fileUrl: document.fileUrl, pageNumber: currentPageNo }),
+          });
+          const singleData = await singleRes.json();
+          const singleText = typeof singleData?.text === 'string' ? singleData.text : '';
+          if (singleRes.ok && singleText.trim()) {
+            setContentOverrides(prev => ({ ...prev, [startIndex]: singleText }));
+          }
+        }
       }
     } catch {
       // Keep existing content; user can continue with uploaded PDF mode.
@@ -132,7 +150,7 @@ export const FreeReadingMode: React.FC<FreeReadingModeProps> = ({ document, onBa
     setIsAILoading(true);
 
     try {
-      const res = await fetch(`${import.meta.env.VITE_BACKEND_URL}/chat`, {
+      const res = await fetch(toBackendUrl('/chat'), {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -313,6 +331,7 @@ export const FreeReadingMode: React.FC<FreeReadingModeProps> = ({ document, onBa
             totalPages={totalPages}
             document={document}
             isTextLoading={isBatchLoading}
+            onBackToHome={onBackToHome}
           />
 
           {/* Navigation */}

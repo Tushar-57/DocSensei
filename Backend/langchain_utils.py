@@ -244,10 +244,10 @@ def extract_text_from_pdf(file_path: str) -> list:
             return [f"[Error reading file: {e}]"]
 
 
-def extract_page_text(file_path: str, page_number: int) -> str:
+def extract_page_text(file_path: str, page_number: int, allow_vision: bool = True) -> str:
     """
     Extract a single page with layered fallbacks:
-    1) pypdf text layer, 2) PyMuPDF text layer, 3) Vision OCR.
+    1) pypdf text layer, 2) PyMuPDF text layer, 3) Vision OCR (optional).
     """
     ai_logger.info('Single-page extraction requested: %s page=%d', file_path, page_number)
 
@@ -288,6 +288,14 @@ def extract_page_text(file_path: str, page_number: int) -> str:
             ai_logger.warning('Single-page PyMuPDF output appears gibberish: %s page=%d', file_path, page_number)
     except Exception as exc:
         ai_logger.warning('Single-page PyMuPDF extraction failed: %s page=%d error=%s', file_path, page_number, exc)
+
+    if not allow_vision:
+        ai_logger.info(
+            'Single-page text layer unresolved and Vision OCR disabled: %s page=%d',
+            file_path,
+            page_number,
+        )
+        return ''
 
     ai_logger.info('Single-page text layer empty; falling back to Vision OCR: %s page=%d', file_path, page_number)
     return extract_page_vision(file_path, page_number)

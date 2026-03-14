@@ -60,6 +60,7 @@ const InfoFooter: React.FC = () => {
 import { Upload, FileText, File, Sparkles, BookOpen } from 'lucide-react';
 import { Document } from '../types';
 import { ThemeToggle } from './ThemeToggle';
+import { toBackendUrl } from '../utils/api';
 
 interface DocumentUploadProps {
   onDocumentUploaded: (document: Document) => void;
@@ -93,7 +94,7 @@ export const DocumentUpload: React.FC<DocumentUploadProps> = ({ onDocumentUpload
     try {
       const formData = new FormData();
       formData.append('file', file);
-  const response = await fetch(`${import.meta.env.VITE_BACKEND_URL}/upload`, {
+      const response = await fetch(toBackendUrl('/upload'), {
         method: 'POST',
         body: formData,
       });
@@ -109,7 +110,7 @@ export const DocumentUpload: React.FC<DocumentUploadProps> = ({ onDocumentUpload
     // Fetch extracted content from backend (now returns { pages: string[] })
     let extractedPages: string[] = [];
     try {
-      const extractResponse = await fetch(`${import.meta.env.VITE_BACKEND_URL}/extract`, {
+      const extractResponse = await fetch(toBackendUrl('/extract'), {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ fileUrl }),
@@ -150,7 +151,7 @@ export const DocumentUpload: React.FC<DocumentUploadProps> = ({ onDocumentUpload
   const handleLoadSample = async () => {
     setIsSampleLoading(true);
     try {
-      const res = await fetch(`${import.meta.env.VITE_BACKEND_URL}/sample`);
+      const res = await fetch(toBackendUrl('/sample'));
       if (!res.ok) throw new Error('Failed to load sample');
       const data = await res.json();
       const extractedPages: string[] = Array.isArray(data.pages) ? data.pages : [];

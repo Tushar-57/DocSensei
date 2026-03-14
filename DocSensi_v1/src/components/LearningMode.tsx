@@ -6,6 +6,7 @@ import { Quiz } from './Quiz';
 import { ThemeToggle } from './ThemeToggle';
 import { PageSummary } from './PageSummary';
 import { PageTools, PageBookmark } from './PageTools';
+import { toBackendUrl } from '../utils/api';
 
 interface LearningModeProps {
   document: Document;
@@ -79,10 +80,10 @@ export const LearningMode: React.FC<LearningModeProps> = ({ document, onBackToHo
     if (showLoaderForCurrent) setIsBatchLoading(true);
 
     try {
-      const res = await fetch(`${import.meta.env.VITE_BACKEND_URL}/extract-pages`, {
+      const res = await fetch(toBackendUrl('/extract-pages'), {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ fileUrl: document.fileUrl, startPage, batchSize: BATCH_SIZE }),
+        body: JSON.stringify({ fileUrl: document.fileUrl, startPage, batchSize: BATCH_SIZE, textLayerOnly: true }),
       });
       const data = await res.json();
       if (!res.ok || !Array.isArray(data.pages)) return;
@@ -98,6 +99,23 @@ export const LearningMode: React.FC<LearningModeProps> = ({ document, onBackToHo
 
       if (Object.keys(nextOverrides).length > 0) {
         setContentOverrides(prev => ({ ...prev, ...nextOverrides }));
+      }
+
+      const resolvedAfterBatch = isPageResolved(startIndex) || !!nextOverrides[startIndex]?.trim();
+      if (showLoaderForCurrent && !resolvedAfterBatch) {
+        const currentPageNo = rawPages[startIndex]?.number;
+        if (currentPageNo) {
+          const singleRes = await fetch(toBackendUrl('/extract-page'), {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ fileUrl: document.fileUrl, pageNumber: currentPageNo }),
+          });
+          const singleData = await singleRes.json();
+          const singleText = typeof singleData?.text === 'string' ? singleData.text : '';
+          if (singleRes.ok && singleText.trim()) {
+            setContentOverrides(prev => ({ ...prev, [startIndex]: singleText }));
+          }
+        }
       }
     } catch {
       // Keep existing content; user can continue with uploaded PDF mode.
@@ -281,7 +299,7 @@ export const LearningMode: React.FC<LearningModeProps> = ({ document, onBackToHo
         documentId: document.id,
       };
       console.log('[Quiz Fetch] Sending payload:', quizPayload);
-      const res = await fetch(`${import.meta.env.VITE_BACKEND_URL}/generate-quiz`, {
+      const res = await fetch(toBackendUrl('/generate-quiz'), {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(quizPayload),
@@ -468,6 +486,7 @@ export const LearningMode: React.FC<LearningModeProps> = ({ document, onBackToHo
               totalPages={totalPages}
               document={document}
               isTextLoading={isBatchLoading}
+              onBackToHome={onBackToHome}
             />
 
             {/* Navigation */}

@@ -377,6 +377,10 @@ EXTRACTION_BATCH_DEFAULT_PAGES = max(
     1,
     min(int(os.environ.get('EXTRACTION_BATCH_DEFAULT_PAGES', '5')), EXTRACTION_BATCH_MAX_PAGES),
 )
+EXTRACTION_BATCH_TIME_BUDGET_SEC = max(
+    2.0,
+    float(os.environ.get('EXTRACTION_BATCH_TIME_BUDGET_SEC', '12')),
+)
 app.config['UPLOAD_FOLDER'] = UPLOAD_FOLDER
 app.config['MAX_CONTENT_LENGTH'] = 100 * 1024 * 1024  # 100 MB
 
@@ -704,6 +708,7 @@ def extract_pages_batch():
     file_url = data.get('fileUrl')
     start_page = data.get('startPage')
     batch_size = data.get('batchSize', EXTRACTION_BATCH_DEFAULT_PAGES)
+    text_layer_only = bool(data.get('textLayerOnly', True))
 
     if not file_url or start_page is None:
         return jsonify({'error': 'fileUrl and startPage required'}), 400
@@ -723,10 +728,11 @@ def extract_pages_batch():
         return jsonify({'error': 'File not found'}), 404
 
     ai_logger.info(
-        'Batch extraction requested: file=%s start=%d batch=%d',
+        'Batch extraction requested: file=%s start=%d batch=%d text_layer_only=%s',
         file_path,
         start_page_int,
         batch_size_int,
+        text_layer_only,
     )
 
     try:
@@ -745,8 +751,21 @@ def extract_pages_batch():
 
         end_page_int = min(total_pages, start_page_int + batch_size_int - 1)
         result_pages = []
+        timed_out = False
 
         for page_no in range(start_page_int, end_page_int + 1):
+            if time.monotonic() - endpoint_start >= EXTRACTION_BATCH_TIME_BUDGET_SEC:
+                timed_out = True
+                ai_logger.warning(
+                    'Batch extraction time budget reached: file=%s start=%d current=%d elapsed=%.2fs budget=%.2fs',
+                    file_path,
+                    start_page_int,
+                    page_no,
+                    time.monotonic() - endpoint_start,
+                    EXTRACTION_BATCH_TIME_BUDGET_SEC,
+                )
+                break
+
             idx = page_no - 1
             existing_text = cached_pages[idx] if idx < len(cached_pages) else ''
 
@@ -754,7 +773,7 @@ def extract_pages_batch():
                 result_pages.append({'pageNumber': page_no, 'text': existing_text, 'source': 'cache'})
                 continue
 
-            page_text = extract_page_text(file_path, page_no)
+            page_text = extract_page_text(file_path, page_no, allow_vision=not text_layer_only)
             cached_pages[idx] = page_text or ''
             result_pages.append({'pageNumber': page_no, 'text': cached_pages[idx], 'source': 'hydrated'})
 
@@ -772,6 +791,8 @@ def extract_pages_batch():
             'endPage': end_page_int,
             'totalPages': total_pages,
             'pages': result_pages,
+            'partial': timed_out,
+            'nextPage': (result_pages[-1]['pageNumber'] + 1) if timed_out and result_pages else start_page_int,
         })
     except Exception as e:
         ai_logger.error('Batch extraction failed: file=%s start=%s error=%s', file_path, start_page_int, e)
