@@ -8,6 +8,7 @@ import os
 from dotenv import load_dotenv
 from langchain_openai import ChatOpenAI
 from langchain_core.prompts import ChatPromptTemplate
+from langsmith import traceable
 import prompt_library
 
 import base64
@@ -309,6 +310,7 @@ def extract_page_text(file_path: str, page_number: int, allow_vision: bool = Tru
 
 # Add more LangChain-powered functions as needed.
 
+@traceable(name="Generate MCQ Quiz")
 def mcq_quiz_generator(page_content: str):
     """
     Use LLM to generate 3 MCQs with explanations for the given page content. Returns a list of question dicts.
@@ -361,6 +363,7 @@ def mcq_quiz_generator(page_content: str):
         return {"error": f"Failed to run LLM chain for quiz: {e}"}
 
 
+@traceable(name="Chat with Document")
 def chat_with_document(message: str, context: str, document_name: str, history: list) -> str:
     """
     Chat with the AI about the current page of a document.
@@ -404,6 +407,7 @@ def chat_with_document(message: str, context: str, document_name: str, history: 
 
 
 @lru_cache(maxsize=256)
+@traceable(name="Summarize Page Content")
 def summarize_page(page_content: str) -> dict:
     """
     Generate a structured summary for a single page of content.
@@ -424,7 +428,7 @@ def summarize_page(page_content: str) -> dict:
         system_message = prompt_library.prompt_summarize_page
         prompt = ChatPromptTemplate.from_messages([
             ("system", system_message),
-            ("user", "Summarise the page content provided above."),
+            ("user", page_content),
         ])
         chain = prompt | llm | JsonOutputParser()
         response = chain.invoke({"page_content": page_content[:4000]})
