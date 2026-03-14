@@ -98,7 +98,8 @@ def _ocr_page_local(page: fitz.Page) -> str:
     try:
         ai_logger.info('Starting local Tesseract OCR on fallback page...')
         start_t = time.monotonic()
-        pix = page.get_pixmap(matrix=fitz.Matrix(2, 2))
+        # Reduced matrix from 2x to 1x to drastically improve extraction speed on low-CPU servers
+        pix = page.get_pixmap(matrix=fitz.Matrix(1.0, 1.0))
         img_data = pix.tobytes("png")
         img = Image.open(io.BytesIO(img_data))
         text = pytesseract.image_to_string(img).strip()
@@ -159,7 +160,7 @@ def extract_text_from_pdf(file_path: str) -> list:
                             pypdf_text = (reader.pages[idx].extract_text() or '').strip()
                             
                             if pypdf_text and _is_text_gibberish(pypdf_text):
-                                ai_logger.warning('Page %d/%d pypdf fallback flagged as gibberish too. Ignoring.', idx + 1, total_pages)
+                                ai_logger.warning('Page %d/%d pypdf fallback flagged as gibberish too. Ignoring. Snippet: %s', idx + 1, total_pages, repr(pypdf_text[:100]))
                                 pypdf_text = ""
                                 
                             if pypdf_text:
