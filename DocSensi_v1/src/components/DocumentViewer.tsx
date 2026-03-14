@@ -10,6 +10,7 @@ interface DocumentViewerProps {
   document?: DocType;
   pageNumber?: number;
   onPageChange?: (page: number) => void;
+  isTextLoading?: boolean;
 }
 
 export const DocumentViewer: React.FC<DocumentViewerProps> = ({
@@ -18,6 +19,7 @@ export const DocumentViewer: React.FC<DocumentViewerProps> = ({
   document,
   pageNumber,
   onPageChange,
+  isTextLoading = false,
 }) => {
   // Toggle state: true = show rendered (PDF), false = show extracted text
   const [showRendered, setShowRendered] = useState(true);
@@ -133,9 +135,18 @@ export const DocumentViewer: React.FC<DocumentViewerProps> = ({
                 </div>
               </div>
             ) : (
-              <div className="extracted-text-container dark:bg-dark-700/80 border dark:border-dark-600">
-                <pre className="whitespace-pre-wrap text-gray-900 dark:text-white text-base font-geist leading-relaxed" style={{fontFamily: 'inherit'}}>{page.content}</pre>
-              </div>
+              isTextLoading && !page.content.trim() ? (
+                <div className="extracted-text-container dark:bg-dark-700/80 border dark:border-dark-600 flex items-center justify-center min-h-[300px]">
+                  <div className="text-center">
+                    <div className="w-8 h-8 border-2 border-white/30 border-t-white rounded-full animate-spin mx-auto mb-3"></div>
+                    <p className="text-white/80 text-sm">Extracting page text...</p>
+                  </div>
+                </div>
+              ) : (
+                <div className="extracted-text-container dark:bg-dark-700/80 border dark:border-dark-600">
+                  <pre className="whitespace-pre-wrap text-gray-900 dark:text-white text-base font-geist leading-relaxed" style={{fontFamily: 'inherit'}}>{page.content}</pre>
+                </div>
+              )
             )
           ) : fileUrl && docType === 'Word' ? (
             <div>

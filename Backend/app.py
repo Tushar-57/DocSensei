@@ -371,6 +371,12 @@ EXTRACTION_CACHE_SUFFIX = '.pages.json'
 
 app = Flask(__name__)
 CORS(app, resources={r"/*": {"origins": "*"}}, supports_credentials=True)
+
+EXTRACTION_BATCH_MAX_PAGES = max(1, int(os.environ.get('EXTRACTION_BATCH_MAX_PAGES', '10')))
+EXTRACTION_BATCH_DEFAULT_PAGES = max(
+    1,
+    min(int(os.environ.get('EXTRACTION_BATCH_DEFAULT_PAGES', '5')), EXTRACTION_BATCH_MAX_PAGES),
+)
 app.config['UPLOAD_FOLDER'] = UPLOAD_FOLDER
 app.config['MAX_CONTENT_LENGTH'] = 100 * 1024 * 1024  # 100 MB
 
@@ -687,6 +693,88 @@ def extract_page():
         return jsonify({'text': text, 'pageNumber': page_number_int})
     except Exception as e:
         ai_logger.error('Single-page extraction failed for page %s: %s', page_number_int, e)
+        return jsonify({'error': str(e)}), 500
+
+
+@app.route('/extract-pages', methods=['POST'])
+def extract_pages_batch():
+    """Extract a batch of pages on demand and hydrate cache incrementally."""
+    endpoint_start = time.monotonic()
+    data = request.json or {}
+    file_url = data.get('fileUrl')
+    start_page = data.get('startPage')
+    batch_size = data.get('batchSize', EXTRACTION_BATCH_DEFAULT_PAGES)
+
+    if not file_url or start_page is None:
+        return jsonify({'error': 'fileUrl and startPage required'}), 400
+
+    try:
+        start_page_int = int(start_page)
+        batch_size_int = max(1, min(int(batch_size), EXTRACTION_BATCH_MAX_PAGES))
+    except (TypeError, ValueError):
+        return jsonify({'error': 'startPage and batchSize must be integers'}), 400
+
+    if start_page_int < 1:
+        return jsonify({'error': 'startPage must be >= 1'}), 400
+
+    filename = file_url.split('/')[-1]
+    file_path = os.path.join(app.config['UPLOAD_FOLDER'], filename)
+    if not os.path.exists(file_path):
+        return jsonify({'error': 'File not found'}), 404
+
+    ai_logger.info(
+        'Batch extraction requested: file=%s start=%d batch=%d',
+        file_path,
+        start_page_int,
+        batch_size_int,
+    )
+
+    try:
+        cached_pages = load_extraction_cache(file_path)
+        if cached_pages is None:
+            ai_logger.info('No extraction cache found for %s during batch request; extracting baseline', file_path)
+            cached_pages = extract_text_from_pdf(file_path)
+            if is_successful_extraction(cached_pages):
+                save_extraction_cache(file_path, cached_pages)
+
+        total_pages = len(cached_pages)
+        if total_pages == 0:
+            return jsonify({'error': 'No pages found'}), 400
+        if start_page_int > total_pages:
+            return jsonify({'error': f'startPage out of range (1-{total_pages})'}), 400
+
+        end_page_int = min(total_pages, start_page_int + batch_size_int - 1)
+        result_pages = []
+
+        for page_no in range(start_page_int, end_page_int + 1):
+            idx = page_no - 1
+            existing_text = cached_pages[idx] if idx < len(cached_pages) else ''
+
+            if isinstance(existing_text, str) and existing_text.strip():
+                result_pages.append({'pageNumber': page_no, 'text': existing_text, 'source': 'cache'})
+                continue
+
+            page_text = extract_page_text(file_path, page_no)
+            cached_pages[idx] = page_text or ''
+            result_pages.append({'pageNumber': page_no, 'text': cached_pages[idx], 'source': 'hydrated'})
+
+        save_extraction_cache(file_path, cached_pages)
+        ai_logger.info(
+            'Batch extraction complete: file=%s start=%d end=%d elapsed=%.2fs',
+            file_path,
+            start_page_int,
+            end_page_int,
+            time.monotonic() - endpoint_start,
+        )
+
+        return jsonify({
+            'startPage': start_page_int,
+            'endPage': end_page_int,
+            'totalPages': total_pages,
+            'pages': result_pages,
+        })
+    except Exception as e:
+        ai_logger.error('Batch extraction failed: file=%s start=%s error=%s', file_path, start_page_int, e)
         return jsonify({'error': str(e)}), 500
 
 

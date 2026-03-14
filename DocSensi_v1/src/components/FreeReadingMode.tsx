@@ -5,6 +5,7 @@ import { DocumentViewer } from './DocumentViewer';
 import { ChatBot } from './ChatBot';
 import { ThemeToggle } from './ThemeToggle';
 import { PageSummary } from './PageSummary';
+import { PageTools, PageBookmark } from './PageTools';
 
 interface FreeReadingModeProps {
   document: Document;
@@ -14,6 +15,7 @@ interface FreeReadingModeProps {
 export const FreeReadingMode: React.FC<FreeReadingModeProps> = ({ document, onBackToHome }) => {
   const [currentPageIndex, setCurrentPageIndex] = useState(0);
   const [isAILoading, setIsAILoading] = useState(false);
+  const [isBatchLoading, setIsBatchLoading] = useState(false);
   const [chatMessages, setChatMessages] = useState<ChatMessage[]>([
     {
       id: '1',
@@ -24,6 +26,8 @@ export const FreeReadingMode: React.FC<FreeReadingModeProps> = ({ document, onBa
   ]);
   // Vision OCR overrides: page index → extracted text (for scanned/image pages)
   const [contentOverrides, setContentOverrides] = useState<Record<number, string>>({});
+  const [batchStartsLoading, setBatchStartsLoading] = useState<Record<number, boolean>>({});
+  const [bookmarks, setBookmarks] = useState<PageBookmark[]>([]);
 
   const rawPages = document.pages;
   const pages = rawPages.map((p, i) =>
@@ -32,22 +36,89 @@ export const FreeReadingMode: React.FC<FreeReadingModeProps> = ({ document, onBa
   const currentPage = pages[currentPageIndex];
   const totalPages = pages.length;
   const readingProgress = ((currentPageIndex + 1) / totalPages) * 100;
+  const BATCH_SIZE = Math.max(1, Math.min(Number(import.meta.env.VITE_EXTRACTION_BATCH_SIZE || 5), 10));
+  const bookmarkStorageKey = `docsensei:bookmarks:${document.id}`;
 
-  // When navigating to a page with no text layer, fetch it via Vision API
   useEffect(() => {
-    const page = rawPages[currentPageIndex];
-    if (!page || page.content.trim() || contentOverrides[currentPageIndex] !== undefined) return;
-    if (!document.fileUrl) return;
-    fetch(`${import.meta.env.VITE_BACKEND_URL}/extract-page`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ fileUrl: document.fileUrl, pageNumber: page.number }),
-    })
-      .then(r => r.json())
-      .then(data => {
-        if (data.text) setContentOverrides(prev => ({ ...prev, [currentPageIndex]: data.text }));
-      })
-      .catch(() => {});
+    try {
+      const stored = localStorage.getItem(bookmarkStorageKey);
+      if (!stored) {
+        setBookmarks([]);
+        return;
+      }
+      const parsed = JSON.parse(stored);
+      if (Array.isArray(parsed)) {
+        setBookmarks(parsed.filter((b) => typeof b?.page === 'number' && typeof b?.name === 'string'));
+      }
+    } catch {
+      setBookmarks([]);
+    }
+  }, [bookmarkStorageKey]);
+
+  useEffect(() => {
+    try {
+      localStorage.setItem(bookmarkStorageKey, JSON.stringify(bookmarks));
+    } catch {
+      // Ignore localStorage write errors.
+    }
+  }, [bookmarkStorageKey, bookmarks]);
+
+  const isPageResolved = (index: number) => {
+    const base = rawPages[index]?.content || '';
+    const override = contentOverrides[index] || '';
+    return !!(override.trim() || base.trim());
+  };
+
+  const hydrateBatch = async (startIndex: number, showLoaderForCurrent: boolean) => {
+    const startPage = rawPages[startIndex]?.number;
+    if (!startPage || !document.fileUrl) return;
+    if (batchStartsLoading[startPage]) return;
+
+    setBatchStartsLoading(prev => ({ ...prev, [startPage]: true }));
+    if (showLoaderForCurrent) setIsBatchLoading(true);
+
+    try {
+      const res = await fetch(`${import.meta.env.VITE_BACKEND_URL}/extract-pages`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ fileUrl: document.fileUrl, startPage, batchSize: BATCH_SIZE }),
+      });
+      const data = await res.json();
+      if (!res.ok || !Array.isArray(data.pages)) return;
+
+      const nextOverrides: Record<number, string> = {};
+      for (const item of data.pages) {
+        const pageNo = Number(item?.pageNumber);
+        const text = typeof item?.text === 'string' ? item.text : '';
+        if (!pageNo || !text.trim()) continue;
+        const idx = pageNo - 1;
+        nextOverrides[idx] = text;
+      }
+
+      if (Object.keys(nextOverrides).length > 0) {
+        setContentOverrides(prev => ({ ...prev, ...nextOverrides }));
+      }
+    } catch {
+      // Keep existing content; user can continue with uploaded PDF mode.
+    } finally {
+      setBatchStartsLoading(prev => {
+        const clone = { ...prev };
+        delete clone[startPage];
+        return clone;
+      });
+      if (showLoaderForCurrent) setIsBatchLoading(false);
+    }
+  };
+
+  // On page change, hydrate current batch if needed; also prefetch upcoming batch.
+  useEffect(() => {
+    const needsCurrent = !isPageResolved(currentPageIndex);
+    void hydrateBatch(currentPageIndex, needsCurrent);
+
+    const nextBatchIndex = currentPageIndex + BATCH_SIZE;
+    if (nextBatchIndex < rawPages.length && !isPageResolved(nextBatchIndex)) {
+      void hydrateBatch(nextBatchIndex, false);
+    }
   }, [currentPageIndex]);
 
   const handleSendMessage = async (message: string) => {
@@ -108,6 +179,33 @@ export const FreeReadingMode: React.FC<FreeReadingModeProps> = ({ document, onBa
     setCurrentPageIndex(pageIndex);
   };
 
+  const jumpToPageNumber = (pageNumber: number) => {
+    if (pageNumber < 1 || pageNumber > totalPages) return;
+    setCurrentPageIndex(pageNumber - 1);
+  };
+
+  const addBookmark = (name: string) => {
+    if (!currentPage?.number) return;
+    const bookmark: PageBookmark = {
+      id: `${document.id}-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
+      page: currentPage.number,
+      name,
+      createdAt: Date.now(),
+    };
+    setBookmarks((prev) => {
+      const deduped = prev.filter((b) => !(b.page === bookmark.page && b.name === bookmark.name));
+      return [bookmark, ...deduped].slice(0, 100);
+    });
+  };
+
+  const renameBookmark = (id: string, name: string) => {
+    setBookmarks((prev) => prev.map((b) => (b.id === id ? { ...b, name } : b)));
+  };
+
+  const deleteBookmark = (id: string) => {
+    setBookmarks((prev) => prev.filter((b) => b.id !== id));
+  };
+
   return (
     <div className="min-h-screen bg-gradient-hero dark:bg-gradient-hero-dark relative overflow-hidden">
       {/* Animated background elements */}
@@ -164,6 +262,16 @@ export const FreeReadingMode: React.FC<FreeReadingModeProps> = ({ document, onBa
                 pages={pages}
                 pageNumber={currentPage.number}
               />
+
+              <PageTools
+                currentPage={currentPage.number}
+                totalPages={totalPages}
+                bookmarks={bookmarks}
+                onJumpToPage={jumpToPageNumber}
+                onAddBookmark={addBookmark}
+                onRenameBookmark={renameBookmark}
+                onDeleteBookmark={deleteBookmark}
+              />
               
               <button
                 onClick={onBackToHome}
@@ -200,7 +308,12 @@ export const FreeReadingMode: React.FC<FreeReadingModeProps> = ({ document, onBa
 
         <div className="space-y-6">
           {/* Document Viewer */}
-          <DocumentViewer page={currentPage} totalPages={totalPages} document={document} />
+          <DocumentViewer
+            page={currentPage}
+            totalPages={totalPages}
+            document={document}
+            isTextLoading={isBatchLoading}
+          />
 
           {/* Navigation */}
           <div className="

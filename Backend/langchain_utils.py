@@ -44,6 +44,28 @@ INITIAL_EXTRACTION_MAX_PAGES = max(
 )
 
 
+def _looks_like_gibberish(text: str) -> bool:
+    """
+    Heuristic to detect broken/encoded text-layer extraction.
+    We treat these pages as missing text and defer to stronger fallbacks.
+    """
+    if not text:
+        return False
+
+    sample = text[:2000]
+    letters = [c for c in sample if c.isalpha()]
+    if len(letters) < 120:
+        return False
+
+    total_letters = len(letters)
+    upper_ratio = sum(1 for c in letters if c.isupper()) / total_letters
+    vowel_ratio = sum(1 for c in letters if c.lower() in "aeiou") / total_letters
+    rare_ratio = sum(1 for c in letters if c in "QZXJKVWqzxjkvw") / total_letters
+
+    # Typical broken-font extraction is very uppercase-heavy and lacks vowel patterns.
+    return upper_ratio > 0.78 and vowel_ratio < 0.24 and rare_ratio > 0.16
+
+
 def _ocr_page_vision(page: fitz.Page) -> str:
     """Render a PDF page to PNG and extract text via GPT-4o-mini Vision."""
     pix = page.get_pixmap(matrix=fitz.Matrix(2, 2))
@@ -147,6 +169,37 @@ def extract_text_from_pdf(file_path: str) -> list:
                         )
                         page_text = ''
 
+                if page_text and _looks_like_gibberish(page_text):
+                    ai_logger.warning(
+                        'Detected gibberish text-layer output on page %d/%d for %s; trying PyMuPDF fallback',
+                        idx,
+                        total_pages,
+                        file_path,
+                    )
+                    fallback_pages += 1
+                    if fitz_doc is None:
+                        fitz_doc = fitz.open(file_path)
+                    try:
+                        page_text = (fitz_doc[idx - 1].get_text() or '').strip()
+                    except Exception as fitz_exc:
+                        ai_logger.error(
+                            'PyMuPDF fallback failed after gibberish detection on page %d/%d for %s: %s',
+                            idx,
+                            total_pages,
+                            file_path,
+                            fitz_exc,
+                        )
+                        page_text = ''
+
+                if page_text and _looks_like_gibberish(page_text):
+                    ai_logger.warning(
+                        'Page %d/%d for %s still looks gibberish after text-layer fallbacks; deferring to lazy extraction',
+                        idx,
+                        total_pages,
+                        file_path,
+                    )
+                    page_text = ''
+
                 if page_text:
                     non_empty_pages += 1
                 pages.append(page_text)
@@ -214,9 +267,11 @@ def extract_page_text(file_path: str, page_number: int) -> str:
 
     try:
         text = (reader.pages[page_number - 1].extract_text() or '').strip()
-        if text:
+        if text and not _looks_like_gibberish(text):
             ai_logger.info('Single-page extraction succeeded via pypdf: %s page=%d', file_path, page_number)
             return text
+        if text:
+            ai_logger.warning('Single-page pypdf output appears gibberish: %s page=%d', file_path, page_number)
     except Exception as exc:
         ai_logger.warning('Single-page pypdf extraction failed: %s page=%d error=%s', file_path, page_number, exc)
 
@@ -226,9 +281,11 @@ def extract_page_text(file_path: str, page_number: int) -> str:
             text = (doc[page_number - 1].get_text() or '').strip()
         finally:
             doc.close()
-        if text:
+        if text and not _looks_like_gibberish(text):
             ai_logger.info('Single-page extraction succeeded via PyMuPDF: %s page=%d', file_path, page_number)
             return text
+        if text:
+            ai_logger.warning('Single-page PyMuPDF output appears gibberish: %s page=%d', file_path, page_number)
     except Exception as exc:
         ai_logger.warning('Single-page PyMuPDF extraction failed: %s page=%d error=%s', file_path, page_number, exc)
 
