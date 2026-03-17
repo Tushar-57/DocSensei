@@ -271,38 +271,38 @@ Difficulty policy:
 Formatting rules:
 - Output JSON only. No markdown, no commentary.
 - Use this exact schema:
-{
+{{
   "questions": [
-    {
+    {{
       "question": "...",
-      "choices": {
+      "choices": {{
         "A": "...",
         "B": "...",
         "C": "...",
         "D": "..."
-      },
+      }},
       "answer": "A",
       "explanation": "..."
-    }
+    }}
   ],
   "valid": true,
   "validation_explanation": "..."
-}
+}}
 
 Validation behavior:
 - If the page is not quizable (title page, TOC, index, acknowledgments, too thin), return:
-{
+{{
   "result": "Not a quizable page",
   "valid": false,
   "validation_explanation": "..."
-}
+}}
 
 - If the page is meaningful but does not have enough substance for MCQs, return:
-{
+{{
   "questions": [],
   "valid": true,
   "validation_explanation": "..."
-}
+}}
 
 Input:
 ---
