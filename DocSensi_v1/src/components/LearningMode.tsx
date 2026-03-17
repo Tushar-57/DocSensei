@@ -29,6 +29,38 @@ export const LearningMode: React.FC<LearningModeProps> = ({ document, onBackToHo
   const [contentOverrides, setContentOverrides] = useState<Record<number, string>>({});
   const [batchStartsLoading, setBatchStartsLoading] = useState<Record<number, boolean>>({});
   const [bookmarks, setBookmarks] = useState<PageBookmark[]>([]);
+  const [streak, setStreak] = useState(0);
+  const [manualHardMode, setManualHardMode] = useState(false);
+  const [showFireAnimation, setShowFireAnimation] = useState(false);
+
+  const streakTier = Math.floor(streak / 3);
+  const isHardMode = manualHardMode || streakTier > 0;
+
+  const getDifficultyLevel = () => {
+    if (!isHardMode) return 'normal';
+    if (streakTier >= 4) return 'legendary';
+    if (streakTier >= 3) return 'expert';
+    if (streakTier >= 2) return 'advanced';
+    return 'hard';
+  };
+
+  const difficultyLevel = getDifficultyLevel();
+
+  const handleCorrectAnswer = () => {
+    setStreak(prev => {
+      const newStreak = prev + 1;
+      if (newStreak % 3 === 0) {
+        setShowFireAnimation(true);
+        setTimeout(() => setShowFireAnimation(false), 2000);
+      }
+      return newStreak;
+    });
+  };
+
+  const handleIncorrectAnswer = () => {
+    setStreak(0);
+  };
+
 
   const rawPages = Array.isArray(document.pages) ? document.pages : [];
   // Merge Vision OCR results into pages so all API calls use the resolved content
@@ -297,6 +329,9 @@ export const LearningMode: React.FC<LearningModeProps> = ({ document, onBackToHo
         pageContent: currentPage?.content || '',
         pageNumber: currentPage.number,
         documentId: document.id,
+        isHardMode,
+        difficultyLevel,
+        streak,
       };
       console.log('[Quiz Fetch] Sending payload:', quizPayload);
       const res = await fetch(toBackendUrl('/generate-quiz'), {
@@ -458,22 +493,56 @@ export const LearningMode: React.FC<LearningModeProps> = ({ document, onBackToHo
           </div>
         </div>
 
-        {/* Auto-advance toggle */}
-        <div className="flex items-center mb-4">
-          <button
-            type="button"
-            role="switch"
-            aria-checked={quizAutoAdvance}
-            onClick={() => setQuizAutoAdvance(v => !v)}
-            className={`relative inline-flex h-6 w-11 flex-shrink-0 items-center rounded-full transition-colors duration-200 focus:outline-none focus:ring-2 focus:ring-blue-400/50 ${quizAutoAdvance ? 'bg-blue-500' : 'bg-white/20'}`}
-          >
-            <span
-              className={`inline-block h-4 w-4 transform rounded-full bg-white shadow transition-transform duration-200 ${quizAutoAdvance ? 'translate-x-6' : 'translate-x-1'}`}
-            />
-          </button>
-          <span className="ml-3 text-white/80 dark:text-white/70 text-sm select-none">
-            Auto-advance past non-content pages (title, TOC, acknowledgments, index)
-          </span>
+        {/* Toggles */}
+        <div className="flex flex-col sm:flex-row sm:items-center sm:space-x-6 space-y-3 sm:space-y-0 mb-4">
+          <div className="flex items-center">
+            <button
+              type="button"
+              role="switch"
+              aria-checked={quizAutoAdvance}
+              onClick={() => setQuizAutoAdvance(v => !v)}
+              className={`relative inline-flex h-6 w-11 flex-shrink-0 items-center rounded-full transition-colors duration-200 focus:outline-none focus:ring-2 focus:ring-blue-400/50 ${quizAutoAdvance ? 'bg-blue-500' : 'bg-white/20'}`}
+            >
+              <span className={`inline-block h-4 w-4 transform rounded-full bg-white shadow transition-transform duration-200 ${quizAutoAdvance ? 'translate-x-6' : 'translate-x-1'}`} />
+            </button>
+            <span className="ml-3 text-white/80 dark:text-white/70 text-sm select-none">
+              Auto-advance past non-content pages (title, TOC, acknowledgments, index)
+            </span>
+          </div>
+
+          <div className="flex items-center">
+            <button
+              type="button"
+              role="switch"
+              aria-checked={manualHardMode}
+              onClick={() => setManualHardMode(v => !v)}
+              className={`relative inline-flex h-6 w-11 flex-shrink-0 items-center rounded-full transition-colors duration-200 focus:outline-none focus:ring-2 focus:ring-purple-400/50 ${manualHardMode ? 'bg-purple-500' : 'bg-white/20'}`}
+            >
+              <span className={`inline-block h-4 w-4 transform rounded-full bg-white shadow transition-transform duration-200 ${manualHardMode ? 'translate-x-6' : 'translate-x-1'}`} />
+            </button>
+            <span className="ml-3 text-white/80 dark:text-white/70 text-sm select-none flex items-center relative">
+              Hard Mode (Scenario-based)
+              <span className="ml-2 text-[11px] px-2 py-0.5 rounded-full bg-white/10 border border-white/15 text-orange-200 uppercase tracking-wide">
+                {difficultyLevel}
+              </span>
+              {streak > 0 && (
+                <span className="ml-3 flex items-center text-orange-400 font-bold whitespace-nowrap">
+                  <span 
+                    className="origin-bottom inline-flex items-center justify-center transition-all duration-1000 ease-out streak-flame-core"
+                    style={{ 
+                      transform: `scale(${1 + streak * 0.15 + (showFireAnimation ? 0.8 : 0)})`, 
+                      marginRight: `${streak * 4 + 4}px`,
+                      marginLeft: `${streak * 4 + 4}px`
+                    }}
+                  >
+                    <span className="streak-flame-aura" aria-hidden="true" />
+                    <span className="animate-fire-alive inline-block origin-bottom">🔥</span>
+                  </span>
+                  <span className="ml-1 z-10 relative">Streak: {streak}</span>
+                </span>
+              )}
+            </span>
+          </div>
         </div>
         <div className="grid xl:grid-cols-10 gap-8">
           {/* Document Viewer - 70% */}
@@ -583,6 +652,8 @@ export const LearningMode: React.FC<LearningModeProps> = ({ document, onBackToHo
                 questions={quizQuestions}
                 onQuizComplete={handleQuizComplete}
                 onQuizReset={handleQuizReset}
+                onCorrectAnswer={handleCorrectAnswer}
+                onIncorrectAnswer={handleIncorrectAnswer}
               />
             ) : (
               <div className="

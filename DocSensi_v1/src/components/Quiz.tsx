@@ -6,10 +6,12 @@ interface QuizProps {
   questions: QuizQuestion[];
   onQuizComplete: () => void;
   onQuizReset: () => void;
+  onCorrectAnswer?: () => void;
+  onIncorrectAnswer?: () => void;
 }
 
 
-export const Quiz: React.FC<QuizProps> = ({ questions, onQuizComplete, onQuizReset }) => {
+export const Quiz: React.FC<QuizProps> = ({ questions, onQuizComplete, onQuizReset, onCorrectAnswer, onIncorrectAnswer }) => {
   // Defensive: check for valid questions array and structure
   if (!questions || !Array.isArray(questions) || questions.length === 0) {
     // Debug: log the received questions prop
@@ -57,6 +59,9 @@ export const Quiz: React.FC<QuizProps> = ({ questions, onQuizComplete, onQuizRes
 
     if (isAnswerCorrect) {
       setCorrectAnswers(prev => prev + 1);
+      if (onCorrectAnswer) onCorrectAnswer();
+    } else {
+      if (onIncorrectAnswer) onIncorrectAnswer();
     }
   };
 
