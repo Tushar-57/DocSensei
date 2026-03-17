@@ -605,13 +605,22 @@ def generate_quiz():
     page_content = data.get('pageContent')
     page_number = data.get('pageNumber')
     document_id = data.get('documentId')
+    is_hard_mode = data.get('isHardMode', False)
+    difficulty_level = str(data.get('difficultyLevel', 'normal') or 'normal').lower()
+    try:
+        streak = int(data.get('streak', 0) or 0)
+    except (TypeError, ValueError):
+        streak = 0
 
     ai_logger.info(
-        '[generate-quiz] Request metadata: documentId=%s pageNumber=%s hasPageContent=%s pagesCount=%s',
+        '[generate-quiz] Request metadata: documentId=%s pageNumber=%s hasPageContent=%s pagesCount=%s isHardMode=%s difficultyLevel=%s streak=%s',
         document_id,
         page_number,
         bool(isinstance(page_content, str) and page_content.strip()),
         len(pages) if isinstance(pages, list) else 0,
+        is_hard_mode,
+        difficulty_level,
+        streak,
     )
 
     if not (isinstance(page_content, str) and page_content.strip()):
@@ -643,8 +652,20 @@ def generate_quiz():
                     'need a quiz.'
             })
 
-        ai_logger.info('Generating quiz for document %s, page %s', document_id, page_number)
-        quiz = mcq_quiz_generator(page_content)
+        ai_logger.info(
+            'Generating quiz for document %s, page %s, hardMode=%s difficultyLevel=%s streak=%s',
+            document_id,
+            page_number,
+            is_hard_mode,
+            difficulty_level,
+            streak,
+        )
+        quiz = mcq_quiz_generator(
+            page_content,
+            is_hard_mode=is_hard_mode,
+            difficulty_level=difficulty_level,
+            streak=streak,
+        )
         ai_logger.info('Quiz generation complete')
         return jsonify(quiz)
     except Exception as e:

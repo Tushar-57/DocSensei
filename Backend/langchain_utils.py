@@ -311,14 +311,29 @@ def extract_page_text(file_path: str, page_number: int, allow_vision: bool = Tru
 # Add more LangChain-powered functions as needed.
 
 @traceable(name="Generate MCQ Quiz")
-def mcq_quiz_generator(page_content: str):
+def mcq_quiz_generator(
+    page_content: str,
+    is_hard_mode: bool = False,
+    difficulty_level: str = "normal",
+    streak: int = 0,
+):
     """
     Use LLM to generate 3 MCQs with explanations for the given page content. Returns a list of question dicts.
     """
-    ai_logger.info('mcq_quiz_generator received content: %s', page_content[:300])
+    ai_logger.info(
+        'mcq_quiz_generator received content: %s, is_hard_mode: %s, difficulty_level: %s, streak: %s',
+        page_content[:300],
+        is_hard_mode,
+        difficulty_level,
+        streak,
+    )
 
     try:
-        system_message = prompt_library.prompt_generate_quiz_v1
+        if is_hard_mode and hasattr(prompt_library, 'prompt_generate_quiz_hard_v1'):
+            system_message = prompt_library.prompt_generate_quiz_hard_v1
+        else:
+            system_message = prompt_library.prompt_generate_quiz_v1
+            
         user_message = "Generate MCQs for the provided content."
         prompt = ChatPromptTemplate.from_messages([
             ("system", system_message),
@@ -327,6 +342,8 @@ def mcq_quiz_generator(page_content: str):
         chain = prompt | llm | JsonOutputParser()
         response = chain.invoke({
             "page_content": page_content,
+            "difficulty_level": difficulty_level,
+            "streak": streak,
             "file_name": "Unknown.pdf",
             "additional context": "None Provided"
         })

@@ -248,3 +248,65 @@ Output:
 
 REMINDER: Always summarize comprehensively, expanding bullet volume and detail to ensure thorough coverage of all key points, nuances, and supporting facts. Include a relatable example in the example field only when required, and present the result in the strict JSON structure with well-crafted, detailed bullet points, a relevant title, and an information-rich one-sentence summary.
 """
+
+prompt_generate_quiz_hard_v1 = """
+You are an expert educational assessor specializing in scenario-based testing.
+
+Your task:
+- Read only the provided page content.
+- Generate up to 3 MCQs that test applied understanding using realistic scenarios, edge cases, or indirect reasoning.
+- Stay strictly grounded in the provided text. Do not invent facts.
+
+Context:
+- Current difficulty level: {difficulty_level}
+- Learner streak: {streak}
+
+Difficulty policy:
+- hard: include one-step application and subtle distractors.
+- advanced: include multi-step reasoning where choices look plausible.
+- expert: include tradeoff analysis or best-choice under constraints.
+- legendary: include nuanced scenario interpretation and strongest evidence-based choice.
+- If the level is unknown, treat it as hard.
+
+Formatting rules:
+- Output JSON only. No markdown, no commentary.
+- Use this exact schema:
+{
+  "questions": [
+    {
+      "question": "...",
+      "choices": {
+        "A": "...",
+        "B": "...",
+        "C": "...",
+        "D": "..."
+      },
+      "answer": "A",
+      "explanation": "..."
+    }
+  ],
+  "valid": true,
+  "validation_explanation": "..."
+}
+
+Validation behavior:
+- If the page is not quizable (title page, TOC, index, acknowledgments, too thin), return:
+{
+  "result": "Not a quizable page",
+  "valid": false,
+  "validation_explanation": "..."
+}
+
+- If the page is meaningful but does not have enough substance for MCQs, return:
+{
+  "questions": [],
+  "valid": true,
+  "validation_explanation": "..."
+}
+
+Input:
+---
+Document Current Page Content:
+{page_content}
+---
+"""
