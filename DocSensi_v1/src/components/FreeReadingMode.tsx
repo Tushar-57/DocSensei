@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import { ChevronLeft, ChevronRight, MessageCircle, Home, BookOpen, Compass } from 'lucide-react';
 import { Document, ChatMessage } from '../types';
 import { DocumentViewer } from './DocumentViewer';
@@ -27,7 +27,7 @@ export const FreeReadingMode: React.FC<FreeReadingModeProps> = ({ document, onBa
   ]);
   // Vision OCR overrides: page index → extracted text (for scanned/image pages)
   const [contentOverrides, setContentOverrides] = useState<Record<number, string>>({});
-  const [batchStartsLoading, setBatchStartsLoading] = useState<Record<number, boolean>>({});
+  const inFlightBatches = useRef<Set<number>>(new Set());
   const [bookmarks, setBookmarks] = useState<PageBookmark[]>([]);
 
   const rawPages = document.pages;
@@ -73,9 +73,9 @@ export const FreeReadingMode: React.FC<FreeReadingModeProps> = ({ document, onBa
   const hydrateBatch = async (startIndex: number, showLoaderForCurrent: boolean) => {
     const startPage = rawPages[startIndex]?.number;
     if (!startPage || !document.fileUrl) return;
-    if (batchStartsLoading[startPage]) return;
+    if (inFlightBatches.current.has(startPage)) return;
 
-    setBatchStartsLoading(prev => ({ ...prev, [startPage]: true }));
+    inFlightBatches.current.add(startPage);
     if (showLoaderForCurrent) setIsBatchLoading(true);
 
     try {
@@ -119,11 +119,7 @@ export const FreeReadingMode: React.FC<FreeReadingModeProps> = ({ document, onBa
     } catch {
       // Keep existing content; user can continue with uploaded PDF mode.
     } finally {
-      setBatchStartsLoading(prev => {
-        const clone = { ...prev };
-        delete clone[startPage];
-        return clone;
-      });
+      inFlightBatches.current.delete(startPage);
       if (showLoaderForCurrent) setIsBatchLoading(false);
     }
   };
@@ -154,10 +150,10 @@ export const FreeReadingMode: React.FC<FreeReadingModeProps> = ({ document, onBa
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          message,
-          context: currentPage?.content || '',
+          message: message.slice(0, 2000),
+          context: (currentPage?.content || '').slice(0, 4000),
           documentName: document.name,
-          history: chatMessages.slice(-6),
+          history: chatMessages.slice(-6).map(m => ({ ...m, text: m.text.slice(0, 500) })),
         }),
       });
       const data = await res.json();

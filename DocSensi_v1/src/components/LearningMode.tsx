@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { ChevronLeft, ChevronRight, BookOpen, Home, Brain, Target, BookMarked } from 'lucide-react';
 import { Document, QuizQuestion } from '../types';
 import { DocumentViewer } from './DocumentViewer';
@@ -27,7 +27,7 @@ export const LearningMode: React.FC<LearningModeProps> = ({ document, onBackToHo
   const [isBatchLoading, setIsBatchLoading] = useState(false);
   // Vision OCR overrides: page index → extracted text (for scanned/image pages)
   const [contentOverrides, setContentOverrides] = useState<Record<number, string>>({});
-  const [batchStartsLoading, setBatchStartsLoading] = useState<Record<number, boolean>>({});
+  const inFlightBatches = useRef<Set<number>>(new Set());
   const [bookmarks, setBookmarks] = useState<PageBookmark[]>([]);
   const [streak, setStreak] = useState(0);
   const [manualHardMode, setManualHardMode] = useState(false);
@@ -106,9 +106,9 @@ export const LearningMode: React.FC<LearningModeProps> = ({ document, onBackToHo
   const hydrateBatch = async (startIndex: number, showLoaderForCurrent: boolean) => {
     const startPage = rawPages[startIndex]?.number;
     if (!startPage || !document.fileUrl) return;
-    if (batchStartsLoading[startPage]) return;
+    if (inFlightBatches.current.has(startPage)) return;
 
-    setBatchStartsLoading(prev => ({ ...prev, [startPage]: true }));
+    inFlightBatches.current.add(startPage);
     if (showLoaderForCurrent) setIsBatchLoading(true);
 
     try {
@@ -152,11 +152,7 @@ export const LearningMode: React.FC<LearningModeProps> = ({ document, onBackToHo
     } catch {
       // Keep existing content; user can continue with uploaded PDF mode.
     } finally {
-      setBatchStartsLoading(prev => {
-        const clone = { ...prev };
-        delete clone[startPage];
-        return clone;
-      });
+      inFlightBatches.current.delete(startPage);
       if (showLoaderForCurrent) setIsBatchLoading(false);
     }
   };
@@ -245,6 +241,8 @@ export const LearningMode: React.FC<LearningModeProps> = ({ document, onBackToHo
     const newCompletedPages = new Set(completedPages);
     newCompletedPages.delete(currentPageIndex);
     setCompletedPages(newCompletedPages);
+    setShowQuiz(false);
+    setQuizQuestions(null);
     setPageValid(false);
   };
 
@@ -343,9 +341,23 @@ export const LearningMode: React.FC<LearningModeProps> = ({ document, onBackToHo
       const data = await res.json();
       // Debug: log the received data structure
       console.log('[Quiz Fetch] Received data:', data);
-      // Defensive: check for questions array
+      // Defensive: validate questions array and each question's required fields
       if (data && Array.isArray(data.questions) && data.questions.length > 0) {
-        setQuizQuestions(data.questions);
+        const validQuestions: QuizQuestion[] = data.questions.filter(
+          (q: unknown): q is QuizQuestion =>
+            q !== null &&
+            typeof q === 'object' &&
+            typeof (q as QuizQuestion).question === 'string' &&
+            Array.isArray((q as QuizQuestion).options) &&
+            (q as QuizQuestion).options.length === 4 &&
+            typeof (q as QuizQuestion).correctAnswer === 'number'
+        );
+        if (validQuestions.length === 0) {
+          setQuizError('Quiz data received but all questions were malformed. Please try again.');
+          setPageValid(false);
+          return;
+        }
+        setQuizQuestions(validQuestions);
         setShowQuiz(true);
         setPageValid(true);
       } else if (data.valid && (!data.questions || data.questions.length === 0)) {
@@ -385,8 +397,8 @@ export const LearningMode: React.FC<LearningModeProps> = ({ document, onBackToHo
         setQuizError('No quiz available for this page.');
         setPageValid(false);
       }
-    } catch (err: any) {
-      setQuizError(err.message || 'Error fetching quiz');
+    } catch (err: unknown) {
+      setQuizError(err instanceof Error ? err.message : 'Error fetching quiz');
       setPageValid(false);
     } finally {
       setLoadingQuiz(false);

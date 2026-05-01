@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { createPortal } from 'react-dom';
 import { FileText, X, Sparkles, Loader2 } from 'lucide-react';
 import { toBackendUrl } from '../utils/api';
@@ -23,13 +23,11 @@ export const PageSummary: React.FC<PageSummaryProps> = ({ pages, pageNumber }) =
   const [error, setError] = useState<string | null>(null);
   const [open, setOpen] = useState(false);
 
-  // Close panel if page changes
-  const [prevPage, setPrevPage] = useState(pageNumber);
-  if (pageNumber !== prevPage) {
-    setPrevPage(pageNumber);
+  // Close panel and clear error when page changes
+  useEffect(() => {
     setOpen(false);
     setError(null);
-  }
+  }, [pageNumber]);
 
   const fetchSummary = async () => {
     // If we already have a summary for this page, just open the panel and no fetch

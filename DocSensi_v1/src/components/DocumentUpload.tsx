@@ -133,7 +133,7 @@ export const DocumentUpload: React.FC<DocumentUploadProps> = ({ onDocumentUpload
     }));
 
     const uploadedDocument: Document = {
-      id: Math.random().toString(36).substr(2, 9),
+      id: crypto.randomUUID(),
       name: file.name,
       type: fileType.includes('pdf') ? 'PDF' : 'Word',
       content: extractedPages.join('\n\n'),
@@ -162,7 +162,7 @@ export const DocumentUpload: React.FC<DocumentUploadProps> = ({ onDocumentUpload
         completed: false,
       }));
       const sampleDocument: Document = {
-        id: Math.random().toString(36).substr(2, 9),
+        id: crypto.randomUUID(),
         name: data.name || 'Python Basics Tutorial',
         type: data.type || 'PDF',
         content: extractedPages.join('\n\n'),

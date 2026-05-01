@@ -371,7 +371,7 @@ EXTRACTION_CACHE_SUFFIX = '.pages.json'
 UNRESOLVED_TEXT_LAYER_SENTINEL = '[[DOCSENSEI_UNRESOLVED_TEXT_LAYER]]'
 
 app = Flask(__name__)
-CORS(app, resources={r"/*": {"origins": "*"}}, supports_credentials=True)
+CORS(app, resources={r"/*": {"origins": "*"}})
 
 EXTRACTION_BATCH_MAX_PAGES = max(1, int(os.environ.get('EXTRACTION_BATCH_MAX_PAGES', '10')))
 EXTRACTION_BATCH_DEFAULT_PAGES = max(
@@ -675,7 +675,7 @@ def generate_quiz():
 
 @app.route('/chat', methods=['POST'])
 def chat():
-    data = request.json
+    data = request.json or {}
     message = data.get('message', '').strip()
     context = data.get('context', '')
     document_name = data.get('documentName', 'document')
@@ -715,8 +715,9 @@ def extract_page():
     except (TypeError, ValueError):
         return jsonify({'error': 'pageNumber must be an integer'}), 400
 
-    filename = file_url.split('/')[-1]
-    file_path = os.path.join(app.config['UPLOAD_FOLDER'], filename)
+    file_path = resolve_uploaded_file_path(file_url)
+    if not file_path:
+        return jsonify({'error': 'Invalid fileUrl'}), 400
     if not os.path.exists(file_path):
         return jsonify({'error': 'File not found'}), 404
 
@@ -786,8 +787,9 @@ def extract_pages_batch():
     if start_page_int < 1:
         return jsonify({'error': 'startPage must be >= 1'}), 400
 
-    filename = file_url.split('/')[-1]
-    file_path = os.path.join(app.config['UPLOAD_FOLDER'], filename)
+    file_path = resolve_uploaded_file_path(file_url)
+    if not file_path:
+        return jsonify({'error': 'Invalid fileUrl'}), 400
     if not os.path.exists(file_path):
         return jsonify({'error': 'File not found'}), 404
 
@@ -874,7 +876,7 @@ def extract_pages_batch():
 
 @app.route('/summarize', methods=['POST'])
 def summarize():
-    data = request.json
+    data = request.json or {}
     pages = data.get('pages')
     page_number = data.get('pageNumber')
     if not pages or not isinstance(pages, list):

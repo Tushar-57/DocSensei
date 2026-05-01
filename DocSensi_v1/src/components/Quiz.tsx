@@ -23,7 +23,7 @@ export const Quiz: React.FC<QuizProps> = ({ questions, onQuizComplete, onQuizRes
     );
   }
   // Defensive: check for correctAnswer in all questions
-  if (questions.some((q: any) => typeof q.correctAnswer !== 'number')) {
+  if (questions.some((q: QuizQuestion) => typeof q.correctAnswer !== 'number')) {
     console.warn('[Quiz] Some questions are missing correctAnswer or have invalid structure:', questions);
     return (
       <div className="bg-red-500/10 border border-red-500/20 rounded-2xl p-6 text-center text-red-300 font-semibold animate-fade-in">

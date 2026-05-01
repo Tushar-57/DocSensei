@@ -351,19 +351,23 @@ def mcq_quiz_generator(
         # Transform 'answer' (A/B/C/D) to 'correctAnswer' (0/1/2/3) for frontend compatibility
         letter_to_index = {"A": 0, "B": 1, "C": 2, "D": 3}
         if response.get("questions") and isinstance(response["questions"], list):
+            valid_questions = []
             for q in response["questions"]:
-                # Convert 'answer' to 'correctAnswer'
                 ans = q.get("answer")
-                if ans in letter_to_index:
-                    q["correctAnswer"] = letter_to_index[ans]
-                else:
-                    q["correctAnswer"] = None
-                if "answer" in q:
-                    del q["answer"]
-                # Convert 'choices' object to 'options' array in A,B,C,D order
+                if ans not in letter_to_index:
+                    ai_logger.warning('Quiz question dropped: invalid answer letter %r', ans)
+                    continue
+                q["correctAnswer"] = letter_to_index[ans]
+                del q["answer"]
                 if "choices" in q and isinstance(q["choices"], dict):
-                    q["options"] = [q["choices"].get(l) for l in ["A", "B", "C", "D"]]
+                    options = [q["choices"].get(l) for l in ["A", "B", "C", "D"]]
+                    if any(o is None for o in options):
+                        ai_logger.warning('Quiz question dropped: missing choice option(s)')
+                        continue
+                    q["options"] = options
                     del q["choices"]
+                valid_questions.append(q)
+            response["questions"] = valid_questions
         valid = response.get("valid", False)
         explanation = response.get(
             "validation_explanation", "No Response from LLM about explanation of validity."
